@@ -1,0 +1,17 @@
+[project]
+name = "ai-document-reader"
+version = "0.1.0"
+description = "AI-powered document intelligence platform"
+requires-python = ">=3.13"
+
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "pymongo",
+    "python-dotenv",
+]
+
+[tool.uv]
+package = false
