@@ -1,13 +1,41 @@
 from fastapi import FastAPI
 
+from app.common.exception import register_exception_handlers
 from app.core.config import settings
 from app.lifespan import lifespan
-from app.modules.health.router import router as health_router
+
+from app.middleware.cors import configure_cors
+from app.middleware.logging import logging_middleware
+from app.middleware.process_time import process_time_middleware
+from app.middleware.request_id import request_id_middleware
+
+from app.modules.auth.router import auth_router
+from app.modules.health.router import health_router
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
+    debug=settings.DEBUG,
     lifespan=lifespan,
 )
 
-app.include_router(health_router)
+# Middleware
+app.middleware("http")(request_id_middleware)
+app.middleware("http")(process_time_middleware)
+app.middleware("http")(logging_middleware)
+
+configure_cors(app)
+
+# Exception Handlers
+register_exception_handlers(app)
+
+# Routers
+app.include_router(
+    health_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    auth_router,
+    prefix="/api/v1",
+)

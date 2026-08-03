@@ -37,10 +37,12 @@ class Settings(BaseSettings):
     # ==========================
     # JWT
     # ==========================
-    JWT_ALGORITHM: str = Field(default="RS256")
+    JWT_ALGORITHM: str = "HS256"
     JWT_PRIVATE_KEY_PATH: str
     JWT_PUBLIC_KEY_PATH: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30)
+    JWT_SECRET_KEY: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ==========================
     # Logging

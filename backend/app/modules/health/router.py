@@ -1,11 +1,22 @@
 ﻿from fastapi import APIRouter
 
-router = APIRouter(prefix="/health", tags=["Health"])
+from app.common.base_schema import ResponseSchema
+from app.modules.health.service import health_service
+
+health_router = APIRouter(
+    prefix="/health",
+    tags=["Health"],
+)
 
 
-@router.get("")
+@health_router.get(
+    "",
+    response_model=ResponseSchema,
+)
 async def health_check():
-    return {
-        "status": "healthy",
-        "message": "AI Document Reader is running",
-    }
+    health = await health_service.check_health()
+
+    return ResponseSchema(
+        message="Health check successful.",
+        data=health,
+    )
