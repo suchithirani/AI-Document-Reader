@@ -55,6 +55,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: BaseAppException,
     ):
+        request.state.error_message = exc.message
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -70,6 +71,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: Exception,
     ):
+        request.state.error_message = exc.message
         logger.exception(exc)
         return JSONResponse(
             status_code=500,

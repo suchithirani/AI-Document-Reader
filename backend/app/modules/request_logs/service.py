@@ -8,20 +8,22 @@ class RequestLogService:
         self.repository = RequestLogRepository(db)
 
     async def log_request(
-        self,
-        *,
-        request_id: str,
-        user_id: str | None,
-        method: str,
-        path: str,
-        query_params: dict,
-        status_code: int,
-        response_time_ms: float,
-        ip_address: str | None,
-        user_agent: str | None,
-        request_size: int | None,
-        response_size: int | None,
-    ):
+    self,
+    *,
+    request_id: str,
+    user_id: str | None,
+    method: str,
+    path: str,
+    query_params: dict,
+    status_code: int,
+    success: bool,
+    error_message: str | None,
+    response_time_ms: float,
+    ip_address: str | None,
+    user_agent: str | None,
+    request_size: int | None,
+    response_size: int | None,
+):
         return await self.repository.create_log(
             {
                 "request_id": request_id,
@@ -30,6 +32,8 @@ class RequestLogService:
                 "path": path,
                 "query_params": query_params,
                 "status_code": status_code,
+                "success": success,
+                "error_message": error_message,
                 "response_time_ms": response_time_ms,
                 "ip_address": ip_address,
                 "user_agent": user_agent,

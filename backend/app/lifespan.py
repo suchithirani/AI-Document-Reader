@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-
+from app.database.indexes import create_indexes
 from fastapi import FastAPI
 
 from app.core.database import (
@@ -25,6 +25,8 @@ async def lifespan(app: FastAPI):
 
     db = get_database()
 
+    await create_indexes(db) 
+    
     app.state.db = db
     app.state.request_log_service = RequestLogService(db)
 

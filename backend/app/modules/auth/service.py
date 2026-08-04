@@ -1,3 +1,5 @@
+from fastapi import Request
+
 from app.common.exception import (
     BadRequestException,
     NotFoundException,
@@ -25,6 +27,8 @@ from app.modules.auth.schema import (
     UserResponse,
 )
 from app.modules.auth.refresh_repository import RefreshTokenRepository
+from app.common.constants import AuditAction, AuditResource
+from app.modules.audit_logs.service import AuditLogService
 
 
 
@@ -33,6 +37,7 @@ class AuthService:
     def __init__(self, db):
         self.user_repository = UserRepository(db)
         self.refresh_repository = RefreshTokenRepository(db)
+        self.audit_log_service = AuditLogService(db)
 
     def _generate_auth_response(self, user: User, access_token: str, refresh_token: str) -> AuthResponse:
 
@@ -52,9 +57,25 @@ class AuthService:
                 phone_verified=user.phone_verified,
             ),
         )
+    def _get_request_info(
+    self,
+    request: Request,
+) -> tuple[str | None, str | None]:
+        ip_address = (
+            request.client.host
+            if request.client
+            else None
+        )
+
+        user_agent = request.headers.get(
+            "user-agent"
+        )
+
+        return ip_address, user_agent
 
     async def register(
         self,
+        http_request: Request,
         request: RegisterRequest,
     ) -> AuthResponse:
         
@@ -83,6 +104,7 @@ class AuthService:
                 exclude_none=True,
             )
         )
+
         access_token = create_access_token(str(created_user.id))
         refresh_token = create_refresh_token(str(created_user.id))
         await self.user_repository.update_last_login(
@@ -99,11 +121,27 @@ class AuthService:
         "updated_at": utc_now(),
     }
 )
+        ip_address, user_agent = self._get_request_info(
+        http_request
+)
+        await self.audit_log_service.create_log(
+        user_id=str(created_user.id),
+        action=AuditAction.REGISTER,
+        resource=AuditResource.AUTH,
+        description="User registered successfully.",
+        metadata={
+            "email": created_user.email,
+            "role": created_user.role.value,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
 
         return self._generate_auth_response(created_user, access_token, refresh_token)
 
     async def login(
         self,
+        http_request: Request,
         request: LoginRequest,
     ) -> AuthResponse:
 
@@ -136,6 +174,9 @@ class AuthService:
         access_token = create_access_token(str(user.id))
         refresh_token = create_refresh_token(str(user.id))
 
+        ip_address, user_agent = self._get_request_info(
+        http_request
+)
         await self.refresh_repository.create_refresh_token(
         {
             "user_id": str(user.id),
@@ -146,6 +187,17 @@ class AuthService:
             "updated_at": utc_now(),
         }
     )
+        await self.audit_log_service.create_log(
+        user_id=str(user.id),
+        action=AuditAction.LOGIN,
+        resource=AuditResource.AUTH,
+        description="User logged in successfully.",
+        metadata={
+            "email": user.email,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
 
         return self._generate_auth_response(
             user,
@@ -155,6 +207,7 @@ class AuthService:
 
     async def refresh_token(
     self,
+    http_request: Request,
     request: RefreshTokenRequest,
 ) -> AuthResponse:
 
@@ -211,6 +264,20 @@ class AuthService:
                 "updated_at": utc_now(),
             }
         )
+        ip_address, user_agent = self._get_request_info(
+        http_request
+        )
+        await self.audit_log_service.create_log(
+        user_id=str(user.id),
+        action=AuditAction.REFRESH_TOKEN,
+        resource=AuditResource.AUTH,
+        description="Access token refreshed.",
+        metadata={
+            "email": user.email,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
 
         return self._generate_auth_response(
             user,
@@ -233,6 +300,7 @@ class AuthService:
 
     async def change_password(
         self,
+        http_request: Request,
         current_user: User,
         request: ChangePasswordRequest,
     ) -> dict:
@@ -261,13 +329,27 @@ class AuthService:
             str(current_user.id),
             password_hash,
         )
-
+        ip_address, user_agent = self._get_request_info(
+        http_request
+        )
+        await self.audit_log_service.create_log(
+        user_id=str(current_user.id),
+        action=AuditAction.CHANGE_PASSWORD,
+        resource=AuditResource.AUTH,
+        description="Password changed successfully.",
+        metadata={
+            "email": current_user.email,
+        },
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
         return {
             "message": "Password changed successfully."
         }
 
     async def logout(
         self,
+        http_request: Request,
         current_user: User,
         request: RefreshTokenRequest,
     ) -> dict:
@@ -294,6 +376,18 @@ class AuthService:
 
         await self.refresh_repository.revoke_refresh_token(
             token_hash
+        )
+
+        ip_address, user_agent = self._get_request_info(
+            http_request
+        )
+        await self.audit_log_service.create_log(
+            user_id=str(current_user.id),
+            action=AuditAction.LOGOUT,
+            resource=AuditResource.AUTH,
+            description="User logged out successfully.",
+            ip_address=ip_address,
+            user_agent=user_agent,
         )
 
         return {

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from app.common.base_schema import MessageResponse
 from app.common.response import created_response, success_response
@@ -21,28 +21,31 @@ auth_router = APIRouter(
 )
 
 
-@auth_router.post(
-    "/register",
-    status_code=status.HTTP_201_CREATED,
-)
+@auth_router.post("/register")
 async def register(
-    request: RegisterRequest,
+    request: Request,
+    body: RegisterRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    result = await service.register(request)
+    result = await service.register(
+        request,
+        body,
+    )
 
-    return created_response(
-        message="User registered successfully.",
+    return success_response(
         data=result,
+        message="User registered successfully.",
+        status_code=201,
     )
 
 
 @auth_router.post("/login")
 async def login(
-    request: LoginRequest,
+    request: Request,
+    body: LoginRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    result = await service.login(request)
+    result = await service.login(request, body)
 
     return success_response(
         message="Login successful.",
@@ -52,10 +55,11 @@ async def login(
 
 @auth_router.post("/refresh")
 async def refresh_token(
-    request: RefreshTokenRequest,
+    request: Request,
+    body: RefreshTokenRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    result = await service.refresh_token(request)
+    result = await service.refresh_token(request, body)
 
     return success_response(
         message="Token refreshed successfully.",
@@ -78,13 +82,15 @@ async def me(
 
 @auth_router.put("/change-password")
 async def change_password(
-    request: ChangePasswordRequest,
+    request: Request,
+    body: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
 ):
     result = await service.change_password(
-        current_user,
         request,
+        current_user,
+        body
     )
 
     return success_response(
@@ -94,13 +100,15 @@ async def change_password(
 
 @auth_router.post("/logout")
 async def logout(
-    request: RefreshTokenRequest,
+    request: Request,
+    body: RefreshTokenRequest,
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
 ):
     result = await service.logout(
-        current_user=current_user,
-        request=request,
+        request,
+        current_user,
+        body,
     )
 
     return success_response(

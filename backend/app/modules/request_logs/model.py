@@ -23,6 +23,10 @@ class RequestLog(BaseModel):
 
     status_code: int
 
+    success: bool
+
+    error_message: str | None = None
+
     response_time_ms: float
 
     ip_address: str | None = None

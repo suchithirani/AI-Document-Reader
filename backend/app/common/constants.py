@@ -40,6 +40,7 @@ class CollectionName(StrEnum):
     OCR_RESULTS = "ocr_results"
     REFRESH_TOKENS = "refresh_tokens"
     REQUEST_LOGS = "request_logs"
+    AUDIT_LOGS = "audit_logs"
 
 
 DEFAULT_PAGE = 1
@@ -52,3 +53,44 @@ REFRESH_TOKEN_TYPE = "refresh"
 class AuthProvider(StrEnum):
     LOCAL = "local"
     GOOGLE = "google"
+
+class AuditAction(StrEnum):
+    REGISTER = "REGISTER"
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    CHANGE_PASSWORD = "CHANGE_PASSWORD"
+    REFRESH_TOKEN = "REFRESH_TOKEN"
+
+    DOCUMENT_UPLOAD = "DOCUMENT_UPLOAD"
+    DOCUMENT_DELETE = "DOCUMENT_DELETE"
+    DOCUMENT_UPDATE = "DOCUMENT_UPDATE"
+
+    OCR_START = "OCR_START"
+    OCR_COMPLETE = "OCR_COMPLETE"
+
+    CHAT_CREATED = "CHAT_CREATED"
+    CHAT_DELETED = "CHAT_DELETED"
+
+class AuditResource(StrEnum):
+    AUTH = "AUTH"
+    DOCUMENT = "DOCUMENT"
+    OCR = "OCR"
+    CHAT = "CHAT"
+    PROFILE = "PROFILE"
+
+# class DocumentStatus(StrEnum):
+#     UPLOADING = "UPLOADING"
+
+#     UPLOADED = "UPLOADED"
+
+#     OCR_PROCESSING = "OCR_PROCESSING"
+
+#     OCR_COMPLETED = "OCR_COMPLETED"
+
+#     AI_PROCESSING = "AI_PROCESSING"
+
+#     READY = "READY"
+
+#     FAILED = "FAILED"
+
+#     DELETED = "DELETED"

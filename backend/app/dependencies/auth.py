@@ -1,5 +1,5 @@
 import token
-
+from fastapi import Depends, Request
 from fastapi import Depends
 from fastapi.security import HTTPBearer
 from fastapi.security import HTTPAuthorizationCredentials
@@ -17,6 +17,7 @@ bearer_scheme = HTTPBearer()
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db=Depends(get_database),
 ):
@@ -41,7 +42,8 @@ async def get_current_user(
 
     if not user.is_active:
         raise UnauthorizedException("User is inactive")
-
+    
+    request.state.user = user
     return user
 
 
