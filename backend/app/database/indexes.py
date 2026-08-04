@@ -92,6 +92,48 @@ async def create_audit_log_indexes(db):
         [("created_at", ASCENDING)]
     )
 
+async def create_document_indexes(db):
+    documents = db[
+        CollectionName.DOCUMENTS.value
+    ]
+
+    await documents.create_index(
+        "owner_id",
+    )
+
+    await documents.create_index(
+        "status",
+    )
+
+    await documents.create_index(
+        "created_at",
+    )
+
+    await documents.create_index(
+        "filename",
+    )
+
+    await documents.create_index(
+        "mime_type",
+    )
+
+async def create_document_content_indexes(db):
+    document_contents = db[
+        CollectionName.DOCUMENT_CONTENTS.value
+    ]
+
+    await document_contents.create_index(
+        [("document_id", ASCENDING)]
+    )
+
+    await document_contents.create_index(
+        [
+            ("document_id", ASCENDING),
+            ("page_number", ASCENDING),
+        ],
+        unique=True,
+    )
+
 
 
 async def create_indexes(db):
@@ -99,3 +141,5 @@ async def create_indexes(db):
     await create_refresh_token_indexes(db)
     await create_request_log_indexes(db)
     await create_audit_log_indexes(db)
+    await create_document_indexes(db)
+    await create_document_content_indexes(db)

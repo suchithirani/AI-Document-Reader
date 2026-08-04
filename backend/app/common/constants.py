@@ -19,6 +19,7 @@ class UserRole(StrEnum):
 class DocumentStatus(StrEnum):
     UPLOADED = "uploaded"
     PROCESSING = "processing"
+    PROCESSED = "processed"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -41,6 +42,7 @@ class CollectionName(StrEnum):
     REFRESH_TOKENS = "refresh_tokens"
     REQUEST_LOGS = "request_logs"
     AUDIT_LOGS = "audit_logs"
+    DOCUMENT_CONTENTS = "document_contents"
 
 
 DEFAULT_PAGE = 1
@@ -60,7 +62,8 @@ class AuditAction(StrEnum):
     LOGOUT = "LOGOUT"
     CHANGE_PASSWORD = "CHANGE_PASSWORD"
     REFRESH_TOKEN = "REFRESH_TOKEN"
-
+    
+    DOCUMENT_PROCESS = "DOCUMENT_PROCESS"
     DOCUMENT_UPLOAD = "DOCUMENT_UPLOAD"
     DOCUMENT_DELETE = "DOCUMENT_DELETE"
     DOCUMENT_UPDATE = "DOCUMENT_UPDATE"
@@ -78,19 +81,19 @@ class AuditResource(StrEnum):
     CHAT = "CHAT"
     PROFILE = "PROFILE"
 
-# class DocumentStatus(StrEnum):
-#     UPLOADING = "UPLOADING"
+class DocumentStatus(StrEnum):
+    UPLOADING = "UPLOADING"
 
-#     UPLOADED = "UPLOADED"
+    UPLOADED = "UPLOADED"
 
-#     OCR_PROCESSING = "OCR_PROCESSING"
+    OCR_PROCESSING = "OCR_PROCESSING"
 
-#     OCR_COMPLETED = "OCR_COMPLETED"
+    OCR_COMPLETED = "OCR_COMPLETED"
 
-#     AI_PROCESSING = "AI_PROCESSING"
+    AI_PROCESSING = "AI_PROCESSING"
 
-#     READY = "READY"
+    READY = "READY"
 
-#     FAILED = "FAILED"
+    FAILED = "FAILED"
 
-#     DELETED = "DELETED"
+    DELETED = "DELETED"

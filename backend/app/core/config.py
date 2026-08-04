@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # ==========================
     # File Upload
     # ==========================
+    UPLOAD_DIRECTORY: str = "uploads"
+
+    STORAGE_PROVIDER: str = "local"
     MAX_UPLOAD_SIZE: int = Field(default=20 * 1024 * 1024)
     ALLOWED_EXTENSIONS: str = Field(default="pdf,png,jpg,jpeg")
 

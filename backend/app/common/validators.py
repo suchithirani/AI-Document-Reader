@@ -1,3 +1,4 @@
+from pathlib import Path
 import re
 from uuid import UUID
 
@@ -44,6 +45,13 @@ def validate_uuid(value: str) -> bool:
     except ValueError:
         return False
 
+def validate_filename(
+    file: UploadFile,
+) -> bool:
+    return (
+        file.filename is not None
+        and file.filename.strip() != ""
+    )
 
 def validate_file_extension(file: UploadFile) -> bool:
     """
@@ -56,10 +64,23 @@ def validate_file_extension(file: UploadFile) -> bool:
         file_type.value for file_type in SupportedFileType
     }
 
-    extension = "." + file.filename.split(".")[-1].lower()
-
+    extension = Path(file.filename).suffix.lower()
+    
     return extension in allowed_extensions
 
+def validate_content_type(
+    file: UploadFile,
+) -> bool:
+    allowed_types = {
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+    }
+
+    return (
+        file.content_type
+        in allowed_types
+    )
 
 def validate_file_size(
     file_size: int,

@@ -2,11 +2,24 @@ from fastapi import Depends
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.database import get_database
-
+from app.modules.documents.service import DocumentService
 from app.modules.auth.service import AuthService
-
+from app.modules.document_contents.service import (
+    DocumentContentService,
+)
+from app.ocr.service import OCRService
 
 def get_auth_service(
     db: AsyncDatabase = Depends(get_database),
 ) -> AuthService:
     return AuthService(db)
+
+def get_document_service(
+    db=Depends(get_database),
+):
+    return DocumentService(db)
+
+def get_document_content_service(
+    db=Depends(get_database),
+):
+    return DocumentContentService(db)

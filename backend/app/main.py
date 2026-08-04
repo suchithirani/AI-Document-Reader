@@ -8,7 +8,9 @@ from app.middleware.cors import configure_cors
 from app.middleware.logging import logging_middleware
 from app.middleware.process_time import process_time_middleware
 from app.middleware.request_id import request_id_middleware
-
+from app.modules.documents.router import (
+    document_router,
+)
 from app.modules.auth.router import auth_router
 from app.modules.health.router import health_router
 
@@ -37,5 +39,10 @@ app.include_router(
 
 app.include_router(
     auth_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    document_router,
     prefix="/api/v1",
 )

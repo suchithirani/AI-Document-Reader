@@ -26,6 +26,7 @@ from app.modules.auth.schema import (
     RegisterRequest,
     UserResponse,
 )
+from app.common.utils.request import get_request_info
 from app.modules.auth.refresh_repository import RefreshTokenRepository
 from app.common.constants import AuditAction, AuditResource
 from app.modules.audit_logs.service import AuditLogService
@@ -57,21 +58,6 @@ class AuthService:
                 phone_verified=user.phone_verified,
             ),
         )
-    def _get_request_info(
-    self,
-    request: Request,
-) -> tuple[str | None, str | None]:
-        ip_address = (
-            request.client.host
-            if request.client
-            else None
-        )
-
-        user_agent = request.headers.get(
-            "user-agent"
-        )
-
-        return ip_address, user_agent
 
     async def register(
         self,
@@ -121,7 +107,7 @@ class AuthService:
         "updated_at": utc_now(),
     }
 )
-        ip_address, user_agent = self._get_request_info(
+        ip_address, user_agent = get_request_info(
         http_request
 )
         await self.audit_log_service.create_log(
@@ -174,7 +160,7 @@ class AuthService:
         access_token = create_access_token(str(user.id))
         refresh_token = create_refresh_token(str(user.id))
 
-        ip_address, user_agent = self._get_request_info(
+        ip_address, user_agent = get_request_info(
         http_request
 )
         await self.refresh_repository.create_refresh_token(
@@ -264,7 +250,7 @@ class AuthService:
                 "updated_at": utc_now(),
             }
         )
-        ip_address, user_agent = self._get_request_info(
+        ip_address, user_agent = get_request_info(
         http_request
         )
         await self.audit_log_service.create_log(
@@ -329,7 +315,7 @@ class AuthService:
             str(current_user.id),
             password_hash,
         )
-        ip_address, user_agent = self._get_request_info(
+        ip_address, user_agent = get_request_info(
         http_request
         )
         await self.audit_log_service.create_log(
@@ -378,7 +364,7 @@ class AuthService:
             token_hash
         )
 
-        ip_address, user_agent = self._get_request_info(
+        ip_address, user_agent = get_request_info(
             http_request
         )
         await self.audit_log_service.create_log(
