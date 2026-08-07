@@ -1,6 +1,6 @@
 from fastapi import Request
 
-from app.common.exception import (
+from app.common.exceptions.auth import (
     BadRequestException,
     NotFoundException,
     UnauthorizedException,

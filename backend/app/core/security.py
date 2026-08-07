@@ -7,7 +7,7 @@ from passlib.context import CryptContext
 
 from app.common.constants import ACCESS_TOKEN_TYPE, REFRESH_TOKEN_TYPE
 from app.core.config import settings
-from app.common.exception import UnauthorizedException
+from app.common.exceptions.auth import UnauthorizedException
 
 pwd_context = CryptContext(
     schemes=["bcrypt"],

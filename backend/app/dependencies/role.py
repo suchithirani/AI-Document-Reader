@@ -1,7 +1,7 @@
 from fastapi import Depends
 
 from app.common.constants import UserRole
-from app.common.exception import ForbiddenException
+from backend.app.common.exceptions.auth import ForbiddenException
 from app.dependencies.auth import get_current_user
 
 

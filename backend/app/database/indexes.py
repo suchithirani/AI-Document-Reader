@@ -133,7 +133,26 @@ async def create_document_content_indexes(db):
         ],
         unique=True,
     )
+async def create_document_chunk_indexes(db):
 
+    chunks = db[
+        CollectionName.DOCUMENT_CHUNKS.value
+    ]
+
+    await chunks.create_index(
+        [
+            ("document_id", ASCENDING),
+        ]
+    )
+
+    await chunks.create_index(
+        [
+            ("document_id", ASCENDING),
+            ("page_number", ASCENDING),
+            ("chunk_index", ASCENDING),
+        ],
+        unique=True,
+    )
 
 
 async def create_indexes(db):
@@ -143,3 +162,4 @@ async def create_indexes(db):
     await create_audit_log_indexes(db)
     await create_document_indexes(db)
     await create_document_content_indexes(db)
+    await create_document_chunk_indexes(db)

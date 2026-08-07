@@ -4,7 +4,7 @@ from fastapi import Depends
 from fastapi.security import HTTPBearer
 from fastapi.security import HTTPAuthorizationCredentials
 
-from app.common.exception import (
+from app.common.exceptions.auth import (
     NotFoundException,
     UnauthorizedException,
 )

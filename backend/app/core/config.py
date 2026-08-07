@@ -61,7 +61,15 @@ class Settings(BaseSettings):
     # ==========================
     # AI
     # ==========================
-    GEMINI_API_KEY: str = ""
+    
+    GEMINI_API_KEY: str = Field(...)
+    EMBEDDING_PROVIDER: str = "gemini"
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
+    GENERATION_MODEL: str = "gemini-3.6-flash"
+
+    GENERATION_PROVIDER: str = "gemini"
+    GROQ_API_KEY: str = Field(...)
+
 
 
 @lru_cache

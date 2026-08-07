@@ -3,6 +3,16 @@ from fastapi.responses import FileResponse
 from app.modules.documents.repository import (
     DocumentRepository,
 )
+from app.common.exceptions.auth import BaseAppException
+from app.services.embedding.service import (
+    EmbeddingService,
+)
+from app.modules.document_chunks.service import (
+    DocumentChunkService,
+)
+from app.services.chunking.service import (
+    ChunkingService,
+)
 from app.services.storage.service import (
     StorageService,
 )
@@ -20,7 +30,7 @@ from app.common.constants import (
     DocumentStatus,
 )
 from app.common.utils.request import get_request_info
-from app.common.exception import BadRequestException, ForbiddenException, NotFoundException
+from app.common.exceptions.auth import BadRequestException, ForbiddenException, NotFoundException
 from app.common.utils.datetime import utc_now
 from app.common.validators import (
     validate_content_type,
@@ -37,7 +47,9 @@ from app.modules.documents.schema import (
 )
 from app.common.utils.pdf import get_pdf_page_count
 from app.ocr.service import OCRService
-
+from app.common.exceptions.document import (
+    DocumentProcessingException,
+)
 
 class DocumentService:
 
@@ -48,7 +60,9 @@ class DocumentService:
 
         self.audit_log_service = AuditLogService(db)
         self.document_content_service = DocumentContentService(db)
-
+        self.document_chunk_service = DocumentChunkService(db)
+        self.chunking_service = ChunkingService()
+        self.embedding_service = EmbeddingService(settings.EMBEDDING_PROVIDER)
         self.ocr_service = OCRService()
     async def upload_document(
         self,
@@ -313,24 +327,26 @@ class DocumentService:
                 "You are not allowed to process this document."
             )
 
-        await self.repository.update_status(
-            document_id,
-            DocumentStatus.OCR_PROCESSING,
-        )
-        await self.document_content_service.delete_document_contents(
-            document_id
-        )
+        if document.status == DocumentStatus.OCR_PROCESSING:
+            raise BadRequestException(
+                "Document is already being processed."
+            )
 
-        pages = self.ocr_service.extract_text(
-            file_path=document.storage_path,
-            extension=document.extension,
-        )
-
-        await self.document_content_service.save_pages(
-            document_id=document_id,
-            pages=pages,
-        )
         try:
+
+            await self.repository.update_status(
+                document_id,
+                DocumentStatus.OCR_PROCESSING,
+            )
+
+            await self.document_content_service.delete_document_contents(
+                document_id
+            )
+
+            await self.document_chunk_service.delete_chunks(
+                document_id
+            )
+
 
             pages = self.ocr_service.extract_text(
                 file_path=document.storage_path,
@@ -342,19 +358,65 @@ class DocumentService:
                 pages=pages,
             )
 
-            await self.repository.update_status(
-                document_id,
-                DocumentStatus.OCR_COMPLETED,
+            for page_number, page_text in enumerate(
+                pages,
+                start=1,
+            ):
+
+                chunks = self.chunking_service.split_text(
+                    page_text
+                )
+
+                await self.document_chunk_service.save_chunks(
+                    document_id=document_id,
+                    page_number=page_number,
+                    chunks=chunks,
+                )
+
+
+            all_chunks = (
+                await self.document_chunk_service.get_chunks(
+                    document_id
+                )
             )
 
-        except Exception:
+            for chunk in all_chunks:
+
+                embedding = (
+                    await self.embedding_service.create_embedding(
+                        chunk.text
+                    )
+                )
+
+                await self.document_chunk_service.update_embedding(
+                    document_id=document_id,
+                    page_number=chunk.page_number,
+                    chunk_index=chunk.chunk_index,
+                    embedding=embedding,
+                )
+
+
+            await self.repository.update_status(
+                document_id,
+                DocumentStatus.READY,
+            )
+
+        except Exception as exception:
 
             await self.repository.update_status(
                 document_id,
                 DocumentStatus.FAILED,
             )
 
-            raise
+            if isinstance(
+                exception,
+                BaseAppException,
+            ):
+                raise
+
+            raise DocumentProcessingException(
+                str(exception)
+            ) from exception
 
         ip_address, user_agent = get_request_info(
             http_request
@@ -368,6 +430,7 @@ class DocumentService:
             description="Document processed successfully.",
             metadata={
                 "pages": len(pages),
+                "chunks": len(all_chunks),
             },
             ip_address=ip_address,
             user_agent=user_agent,
@@ -376,5 +439,6 @@ class DocumentService:
         return {
             "document_id": document_id,
             "pages_processed": len(pages),
-            "status": DocumentStatus.OCR_COMPLETED,
+            "chunks_processed": len(all_chunks),
+            "status": DocumentStatus.READY,
         }

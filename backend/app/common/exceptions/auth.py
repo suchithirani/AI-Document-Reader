@@ -71,7 +71,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: Exception,
     ):
-        request.state.error_message = exc.message
+        request.state.error_message = str(exc)
         logger.exception(exc)
         return JSONResponse(
             status_code=500,

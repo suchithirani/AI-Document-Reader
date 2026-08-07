@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.common.exception import register_exception_handlers
+from app.common.exceptions.auth import register_exception_handlers
 from app.core.config import settings
 from app.lifespan import lifespan
 
@@ -10,6 +10,12 @@ from app.middleware.process_time import process_time_middleware
 from app.middleware.request_id import request_id_middleware
 from app.modules.documents.router import (
     document_router,
+)
+from app.modules.search.router import (
+    search_router,
+)
+from app.modules.chat.router import (
+    chat_router,
 )
 from app.modules.auth.router import auth_router
 from app.modules.health.router import health_router
@@ -44,5 +50,14 @@ app.include_router(
 
 app.include_router(
     document_router,
+    prefix="/api/v1",
+)
+app.include_router(
+    search_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    chat_router,
     prefix="/api/v1",
 )

@@ -8,6 +8,8 @@ from app.modules.document_contents.service import (
     DocumentContentService,
 )
 from app.ocr.service import OCRService
+from app.modules.search.service import SearchService
+from app.modules.chat.service import ChatService
 
 def get_auth_service(
     db: AsyncDatabase = Depends(get_database),
@@ -19,7 +21,17 @@ def get_document_service(
 ):
     return DocumentService(db)
 
+def get_search_service(
+    db=Depends(get_database),
+):
+    return SearchService(db)
+
 def get_document_content_service(
     db=Depends(get_database),
 ):
     return DocumentContentService(db)
+
+def get_chat_service(
+    db=Depends(get_database),
+):
+    return ChatService(db)

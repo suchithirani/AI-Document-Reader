@@ -1,5 +1,8 @@
 import fitz
-
+import re
+from app.common.exceptions.document import (
+    OCRException,
+)
 
 class PDFOCR:
 
@@ -7,14 +10,67 @@ class PDFOCR:
         self,
         file_path: str,
     ) -> list[str]:
+        try:
+            document = fitz.open(file_path)
 
-        document = fitz.open(file_path)
+            pages = []
 
-        pages = []
+            for page in document:
 
-        for page in document:
-            pages.append(page.get_text())
+                blocks = page.get_text("blocks")
 
-        document.close()
+                blocks.sort(
+                    key=lambda block: (
+                        round(block[1], 1),
+                        round(block[0], 1),
+                    )
+                )
 
-        return pages
+                page_text = []
+
+                for block in blocks:
+
+                    text = block[4].strip()
+
+                    if not text:
+                        continue
+
+                    text = self._clean_text(text)
+
+                    page_text.append(text)
+
+                pages.append("\n\n".join(page_text))
+
+            document.close()
+
+            return pages
+
+        except Exception as exception:
+
+            raise OCRException(
+                str(exception)
+            ) from exception
+
+    def _clean_text(
+        self,
+        text: str,
+    ) -> str:
+
+        text = text.replace(
+            "\r",
+            "",
+        )
+
+        text = re.sub(
+            r"[ \t]+",
+            " ",
+            text,
+        )
+
+        text = re.sub(
+            r"\n{3,}",
+            "\n\n",
+            text,
+        )
+
+        return text.strip()

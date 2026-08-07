@@ -16,12 +16,7 @@ class UserRole(StrEnum):
     USER = "user"
 
 
-class DocumentStatus(StrEnum):
-    UPLOADED = "uploaded"
-    PROCESSING = "processing"
-    PROCESSED = "processed"
-    COMPLETED = "completed"
-    FAILED = "failed"
+
 
 
 class SupportedFileType(StrEnum):
@@ -43,6 +38,8 @@ class CollectionName(StrEnum):
     REQUEST_LOGS = "request_logs"
     AUDIT_LOGS = "audit_logs"
     DOCUMENT_CONTENTS = "document_contents"
+    DOCUMENT_CHUNKS = "document_chunks"
+    CHAT_MESSAGES = "chat_messages"
 
 
 DEFAULT_PAGE = 1
@@ -97,3 +94,7 @@ class DocumentStatus(StrEnum):
     FAILED = "FAILED"
 
     DELETED = "DELETED"
+
+class ChatRole(StrEnum):
+    USER = "USER"
+    ASSISTANT = "ASSISTANT"
