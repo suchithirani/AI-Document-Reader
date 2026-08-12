@@ -34,8 +34,10 @@ class HybridSearchService:
             chunk = result["chunk"]
 
             key = (
+                chunk.document_id,
                 chunk.page_number,
                 chunk.chunk_index,
+
             )
 
             merged[key] = {
@@ -53,6 +55,7 @@ class HybridSearchService:
             chunk = result["chunk"]
 
             key = (
+                chunk.document_id,
                 chunk.page_number,
                 chunk.chunk_index,
             )

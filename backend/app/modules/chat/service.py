@@ -25,6 +25,9 @@ from app.common.exceptions.auth import (
 from app.common.constants import (
     DocumentStatus,
 )
+from app.modules.chat.chat_session_repository import ChatSessionDocumentRepository
+from app.workers.chat_tasks import generate_chat_title_task
+from app.workers.chat_summary_task import generate_summary_task
 
 
 class ChatService:
@@ -36,47 +39,56 @@ class ChatService:
         self.search_service = SearchService(db)
 
         self.document_repository = DocumentRepository(db)
+        self.chat_session_document_repository = ChatSessionDocumentRepository(db)
 
     async def create_session(
         self,
         owner_id: str,
-        document_id: str,
+        document_ids: list[str],
     ):
-
-        document = (
-            await self.document_repository.get_document_by_id(
-                document_id
-            )
-        )
-
-        if document is None:
-
-            raise DocumentNotFoundException()
-
-        if document.owner_id != owner_id:
-
-            raise ForbiddenException(
-                "You are not allowed to access this document."
+        for document_id in document_ids:
+            document = (
+                await self.document_repository.get_document_by_id(
+                    document_id
+                )
             )
 
-        if document.status != DocumentStatus.READY:
+            if document is None:
 
-            raise BadRequestException(
-                "Document has not been processed yet."
-            )
+                raise DocumentNotFoundException()
+
+            if document.owner_id != owner_id:
+
+                raise ForbiddenException(
+                    "You are not allowed to access this document."
+                )
+
+            if document.status != DocumentStatus.READY:
+
+                raise BadRequestException(
+                    f"Document {document_id} has not been processed yet."
+                )
 
         session = {
             "owner_id": owner_id,
-            "document_id": document_id,
             "title": "New Chat",
+            "title_generated": False,
+            "summary": None,
+            "summary_updated_at": None,
             "created_at": datetime.now(UTC),
             "updated_at": datetime.now(UTC),
             "deleted_at": None,
         }
 
-        return await self.repository.create_session(
+        created_session = await self.repository.create_session(
             session
         )
+
+        await self.chat_session_document_repository.add_documents(
+            session_id=str(created_session.id),
+            document_ids=document_ids,
+        )
+        return created_session
 
     async def get_sessions(
         self,
@@ -164,27 +176,33 @@ class ChatService:
                 "You are not allowed to access this chat."
             )
 
-        document = (
-            await self.document_repository.get_document_by_id(
-                session.document_id
+        document_ids = (
+            await self.chat_session_document_repository.get_document_ids(
+                session_id,
             )
         )
+        print("DOCUMENT IDS:", document_ids)
 
-        if document is None:
+        for document_id in document_ids:
 
-            raise DocumentNotFoundException()
-
-        if document.owner_id != owner_id:
-
-            raise ForbiddenException(
-                "You are not allowed to access this document."
+            document = (
+                await self.document_repository.get_document_by_id(
+                    document_id,
+                )
             )
 
-        if document.status != DocumentStatus.READY:
+            if document is None:
+                raise DocumentNotFoundException()
 
-            raise BadRequestException(
-                "Document has not been processed yet."
-            )
+            if document.owner_id != owner_id:
+                raise ForbiddenException(
+                    "You are not allowed to access this document."
+                )
+
+            if document.status != DocumentStatus.READY:
+                raise BadRequestException(
+                    f"{document.original_filename} has not been processed yet."
+                )
 
         await self.repository.create_message(
             {
@@ -197,14 +215,18 @@ class ChatService:
             }
         )
 
+
         history = await self.repository.get_recent_messages(
             session_id=session_id,
         )
 
         result = await self.search_service.search(
-            document_id=session.document_id,
+            owner_id=owner_id,
+            session_id=session_id,
+            document_ids=document_ids,
             question=question,
             history=history,
+            summary=session.summary,
         )
 
         await self.repository.create_message(
@@ -217,6 +239,24 @@ class ChatService:
                 "updated_at": datetime.now(UTC),
             }
         )
+        messages = await self.repository.get_messages(
+            session_id,
+        )
+        if len(messages) % 10 ==0:
+            generate_summary_task.delay(
+                session_id=session_id,
+            )
+        if not session.title_generated:
+
+            await self.repository.mark_title_generated(
+                session_id,
+            )
+
+            generate_chat_title_task.delay(
+                session_id=session_id,
+                question=question,
+                answer=result["answer"],
+            )
 
         return result
 

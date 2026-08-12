@@ -1,4 +1,10 @@
-from app.common.constants import CollectionName, DocumentStatus
+from bson import ObjectId
+
+from app.common.constants import (
+    DOCUMENT_PROGRESS,
+    CollectionName,
+    DocumentStatus,
+)
 from app.common.utils.datetime import utc_now
 from app.modules.documents.model import Document
 from app.repositories.base_repository import BaseRepository
@@ -8,7 +14,9 @@ class DocumentRepository(BaseRepository):
 
     def __init__(self, db):
         super().__init__(
-            db[CollectionName.DOCUMENTS.value]
+            db[
+                CollectionName.DOCUMENTS.value
+            ]
         )
 
     async def create_document(
@@ -16,9 +24,13 @@ class DocumentRepository(BaseRepository):
         document: dict,
     ) -> Document:
 
-        created = await self.create(document)
+        created = await self.create(
+            document,
+        )
 
-        return Document.model_validate(created)
+        return Document.model_validate(
+            created,
+        )
 
     async def get_document_by_id(
         self,
@@ -26,13 +38,15 @@ class DocumentRepository(BaseRepository):
     ) -> Document | None:
 
         document = await self.get_by_id(
-        document_id
-    )
+            document_id,
+        )
 
         if document is None:
             return None
 
-        return Document.model_validate(document)
+        return Document.model_validate(
+            document,
+        )
 
     async def get_documents_by_owner(
         self,
@@ -48,13 +62,48 @@ class DocumentRepository(BaseRepository):
             },
             skip=skip,
             limit=limit,
-            sort=[("created_at", -1)],
+            sort=[
+                (
+                    "created_at",
+                    -1,
+                )
+            ],
         )
 
         return [
-            Document.model_validate(doc)
-            for doc in documents
+            Document.model_validate(
+                document,
+            )
+            for document in documents
         ]
+
+    async def get_document_names(
+        self,
+        document_ids: list[str],
+    ) -> dict[str, str]:
+
+        documents = await self.get_many(
+            filters={
+                "_id": {
+                    "$in": [
+                        ObjectId(
+                            document_id,
+                        )
+                        for document_id in document_ids
+                    ]
+                }
+            },
+            limit=len(
+                document_ids,
+            ),
+        )
+
+        return {
+            document["_id"]: document[
+                "original_filename"
+            ]
+            for document in documents
+        }
 
     async def update_status(
         self,
@@ -66,6 +115,9 @@ class DocumentRepository(BaseRepository):
             document_id,
             {
                 "status": status,
+                "progress": DOCUMENT_PROGRESS[
+                    status
+                ],
                 "updated_at": utc_now(),
             },
         )
@@ -73,7 +125,9 @@ class DocumentRepository(BaseRepository):
         if document is None:
             return None
 
-        return Document.model_validate(document)
+        return Document.model_validate(
+            document,
+        )
 
     async def soft_delete(
         self,
@@ -92,7 +146,30 @@ class DocumentRepository(BaseRepository):
         if document is None:
             return None
 
-        return Document.model_validate(document)
+        return Document.model_validate(
+            document,
+        )
+
+    async def get_document_by_hash(
+        self,
+        owner_id: str,
+        file_hash: str,
+    ) -> Document | None:
+
+        document = await self.get_one(
+            {
+                "owner_id": owner_id,
+                "file_hash": file_hash,
+                "deleted_at": None,
+            }
+        )
+
+        if document is None:
+            return None
+
+        return Document.model_validate(
+            self._serialize_document(document)
+        )
 
     async def count_documents(
         self,

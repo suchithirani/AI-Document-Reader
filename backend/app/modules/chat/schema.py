@@ -1,13 +1,13 @@
 from pydantic import BaseModel, Field
 
+from app.common.base_schema import BaseSchema
 
-# ===========================
-# Session
-# ===========================
 
-class CreateChatSessionRequest(BaseModel):
+class CreateChatSessionRequest(BaseSchema):
 
-    document_id: str
+    document_ids: list[str] = Field(
+        min_length=1,
+    )
 
 
 class UpdateChatSessionRequest(BaseModel):
@@ -42,11 +42,14 @@ class SendMessageRequest(BaseModel):
 
 class SourceResponse(BaseModel):
 
+    document_name: str
     page_number: int
 
     chunk_index: int
 
     score: float
+
+    
 
 
 class ChatMessageResponse(BaseModel):

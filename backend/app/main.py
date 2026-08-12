@@ -19,6 +19,7 @@ from app.modules.chat.router import (
 )
 from app.modules.auth.router import auth_router
 from app.modules.health.router import health_router
+from app.modules.analytics.router import analytics_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -59,5 +60,10 @@ app.include_router(
 
 app.include_router(
     chat_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    analytics_router,
     prefix="/api/v1",
 )

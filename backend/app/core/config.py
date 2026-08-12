@@ -70,7 +70,33 @@ class Settings(BaseSettings):
     GENERATION_PROVIDER: str = "gemini"
     GROQ_API_KEY: str = Field(...)
 
+    # redis
+    REDIS_URL: str = Field(default="redis://localhost:6379/0")
+    REDIS_HOST: str = Field(default="localhost")
+    REDIS_PORT: int = Field(default=6379)
+    REDIS_DB: int = Field(default=0)
+    REDIS_PASSWORD: str = Field(default="")
+    REDIS_CACHE_TTL: int = Field(default=3600)
+    LOGIN_MAX_ATTEMPTS: int
+    LOGIN_LOCK_DURATION: int
 
+    # celery beat cleanup
+    TEMP_DIRECTORY: str = "./storage/temp"
+    TEMP_FILE_RETENTION_HOURS: int = 24
+    AUDIT_LOG_RETENTION_DAYS: int = 90
+
+    #email sending
+    SMTP_HOST: str
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    SMTP_FROM: str
+    SMTP_USE_TLS: bool = True
+
+    # otp
+    OTP_PREFIX: str = "otp"
+    OTP_TTL: int = 300
+    OTP_COOLDOWN: int = 60
 
 @lru_cache
 def get_settings() -> Settings:

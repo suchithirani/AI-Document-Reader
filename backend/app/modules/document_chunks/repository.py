@@ -5,6 +5,7 @@ from app.modules.document_chunks.model import (
 from app.repositories.base_repository import (
     BaseRepository,
 )
+from app.modules.documents.repository import DocumentRepository
 
 
 class DocumentChunkRepository(
@@ -17,6 +18,7 @@ class DocumentChunkRepository(
                 CollectionName.DOCUMENT_CHUNKS.value
             ]
         )
+        self.document_repository = DocumentRepository(db)
 
     async def create_chunk(
         self,
@@ -95,14 +97,31 @@ class DocumentChunkRepository(
             }
         )
 
-    async def get_chunks_with_embeddings(
+    async def get_chunks_for_document(
         self,
         document_id: str,
     ):
 
+        return await self.get_many(
+            {
+                "document_id": document_id,
+            },
+            skip=0,
+            limit=100000,
+            sort=[
+                ("page_number", 1),
+                ("chunk_index", 1),
+            ],
+    )
+
+    async def get_chunks_with_embeddings(
+        self,
+        document_ids: list[str],
+    ):
+
         chunks = await self.get_many(
             filters={
-                "document_id": document_id,
+                "document_id": {"$in": document_ids},
                 "embedding": {
                     "$ne": None,
                 },
@@ -113,7 +132,21 @@ class DocumentChunkRepository(
             ],
         )
 
-        return [
-            DocumentChunk.model_validate(chunk)
-            for chunk in chunks
-        ]
+        document_names = await self.document_repository.get_document_names(
+            document_ids,
+        )
+
+        result = []
+
+        for chunk in chunks:
+
+            model = DocumentChunk.model_validate(chunk)
+
+            model.document_name = document_names.get(
+                model.document_id,
+                "Unknown Document",
+            )
+
+            result.append(model)
+
+        return result

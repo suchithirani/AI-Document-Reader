@@ -8,14 +8,15 @@ from app.modules.search.schema import (
 from app.modules.search.service import (
     SearchService,
 )
+from app.dependencies.rate_limit import rate_limit
 
 search_router = APIRouter(
     prefix="/search",
     tags=["Search"],
 )
+    
 
-
-@search_router.post("/")
+@search_router.post("/",dependencies=[rate_limit(limit=10, window=60)],)
 async def search_document(
     request: AskQuestionRequest,
     db=Depends(get_database),

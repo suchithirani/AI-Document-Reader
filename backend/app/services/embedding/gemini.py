@@ -35,3 +35,26 @@ class GeminiEmbedding:
             raise EmbeddingException(
                 str(exception)
             ) from exception
+        
+    async def create_embeddings(
+        self,
+        texts: list[str],
+    ) -> list[list[float]]:
+
+        try:
+
+            response = self.client.models.embed_content(
+                model=settings.EMBEDDING_MODEL,
+                contents=texts,
+            )
+
+            return [
+                embedding.values
+                for embedding in response.embeddings
+            ]
+
+        except Exception as exception:
+
+            raise EmbeddingException(
+                str(exception)
+            ) from exception

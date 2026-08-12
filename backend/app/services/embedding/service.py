@@ -9,10 +9,8 @@ class EmbeddingService:
         self,
         provider: str,
     ):
-        self.engine = (
-            EmbeddingFactory.get_engine(
-                provider
-            )
+        self.engine = EmbeddingFactory.get_engine(
+            provider
         )
 
     async def create_embedding(
@@ -22,4 +20,13 @@ class EmbeddingService:
 
         return await self.engine.create_embedding(
             text
+        )
+
+    async def create_embeddings(
+        self,
+        texts: list[str],
+    ) -> list[list[float]]:
+
+        return await self.engine.create_embeddings(
+            texts
         )

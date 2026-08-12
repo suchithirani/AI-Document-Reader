@@ -10,6 +10,7 @@ from app.modules.chat.schema import (
     UpdateChatSessionRequest,
 )
 from app.modules.chat.service import ChatService
+from app.dependencies.rate_limit import rate_limit
 
 
 chat_router = APIRouter(
@@ -18,7 +19,7 @@ chat_router = APIRouter(
 )
 
 
-@chat_router.post("/sessions")
+@chat_router.post("/sessions",dependencies=[rate_limit(limit=20, window=60)],)
 async def create_session(
     body: CreateChatSessionRequest,
     current_user: User = Depends(get_current_user),
@@ -27,7 +28,7 @@ async def create_session(
 
     result = await service.create_session(
         owner_id=current_user.id,
-        document_id=body.document_id,
+        document_ids=body.document_ids,
     )
 
     return success_response(
@@ -36,7 +37,7 @@ async def create_session(
     )
 
 
-@chat_router.get("/sessions")
+@chat_router.get("/sessions",dependencies=[rate_limit(limit=60, window=60)],)
 async def get_sessions(
     current_user: User = Depends(get_current_user),
     service: ChatService = Depends(get_chat_service),
@@ -52,7 +53,7 @@ async def get_sessions(
     )
 
 
-@chat_router.patch("/sessions/{session_id}")
+@chat_router.patch("/sessions/{session_id}",dependencies=[rate_limit(limit=30, window=60)],)
 async def rename_session(
     session_id: str,
     body: UpdateChatSessionRequest,
@@ -72,7 +73,7 @@ async def rename_session(
     )
 
 
-@chat_router.delete("/sessions/{session_id}")
+@chat_router.delete("/sessions/{session_id}",dependencies=[rate_limit(limit=30, window=60)],)
 async def delete_session(
     session_id: str,
     current_user: User = Depends(get_current_user),
@@ -89,7 +90,7 @@ async def delete_session(
     )
 
 
-@chat_router.post("/sessions/{session_id}/messages")
+@chat_router.post("/sessions/{session_id}/messages",dependencies=[rate_limit(limit=30, window=60)],)
 async def send_message(
     session_id: str,
     body: SendMessageRequest,
@@ -109,7 +110,7 @@ async def send_message(
     )
 
 
-@chat_router.get("/sessions/{session_id}/messages")
+@chat_router.get("/sessions/{session_id}/messages",dependencies=[rate_limit(limit=30, window=60)],)
 async def get_messages(
     session_id: str,
     current_user: User = Depends(get_current_user),

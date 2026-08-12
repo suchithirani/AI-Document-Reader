@@ -40,7 +40,11 @@ class CollectionName(StrEnum):
     DOCUMENT_CONTENTS = "document_contents"
     DOCUMENT_CHUNKS = "document_chunks"
     CHAT_MESSAGES = "chat_messages"
-
+    CHAT_SESSION_DOCUMENTS = "chat_session_documents"
+    ANALYTICS_DAILY = "analytics_daily"
+    AI_USAGE_LOGS = "ai_usage_logs"
+    SYSTEM_METRICS = "system_metrics"
+    PROCESSED_DOCUMENT_CONTENT = "processed_document_content"
 
 DEFAULT_PAGE = 1
 DEFAULT_LIMIT = 10
@@ -59,7 +63,8 @@ class AuditAction(StrEnum):
     LOGOUT = "LOGOUT"
     CHANGE_PASSWORD = "CHANGE_PASSWORD"
     REFRESH_TOKEN = "REFRESH_TOKEN"
-    
+    EMAIL_VERIFY = "EMAIL_VERIFY"
+
     DOCUMENT_PROCESS = "DOCUMENT_PROCESS"
     DOCUMENT_UPLOAD = "DOCUMENT_UPLOAD"
     DOCUMENT_DELETE = "DOCUMENT_DELETE"
@@ -79,21 +84,25 @@ class AuditResource(StrEnum):
     PROFILE = "PROFILE"
 
 class DocumentStatus(StrEnum):
-    UPLOADING = "UPLOADING"
 
     UPLOADED = "UPLOADED"
-
     OCR_PROCESSING = "OCR_PROCESSING"
-
-    OCR_COMPLETED = "OCR_COMPLETED"
-
-    AI_PROCESSING = "AI_PROCESSING"
-
     READY = "READY"
-
     FAILED = "FAILED"
-
+    CHUNKING = "CHUNKING"
+    EMBEDDING = "EMBEDDING"
     DELETED = "DELETED"
+    QUEUED = "QUEUED"
+    
+DOCUMENT_PROGRESS = {
+    DocumentStatus.UPLOADED: 0,
+    DocumentStatus.QUEUED: 5,
+    DocumentStatus.OCR_PROCESSING: 10,
+    DocumentStatus.CHUNKING: 40,
+    DocumentStatus.EMBEDDING: 75,
+    DocumentStatus.READY: 100,
+    DocumentStatus.FAILED: 0,
+}
 
 class ChatRole(StrEnum):
     USER = "USER"

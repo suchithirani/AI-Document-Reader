@@ -23,9 +23,6 @@ class ChatRepository(BaseRepository):
             CollectionName.CHAT_MESSAGES.value
         ]
 
-    # ==================================================
-    # Chat Session
-    # ==================================================
 
     async def create_session(
         self,
@@ -193,3 +190,38 @@ class ChatRepository(BaseRepository):
             )
             for message in messages
         ]
+
+    async def mark_title_generated(
+        self,
+        session_id: str,
+    ):
+
+        await self.update(
+            session_id,
+            {
+                "title_generated": True,
+                "updated_at": utc_now(),
+            },
+        )
+
+    async def update_summary(
+        self,
+        session_id: str,
+        summary: str,
+    ):
+
+        session = await self.update(
+            session_id,
+            {
+                "summary": summary,
+                "summary_updated_at": utc_now(),
+                "updated_at": utc_now(),
+            },
+        )
+
+        if session is None:
+            return None
+
+        return ChatSession.model_validate(
+            session,
+        )

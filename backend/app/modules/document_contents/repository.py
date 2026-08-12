@@ -29,6 +29,21 @@ class DocumentContentRepository(
             created
         )
 
+    async def get_pages(
+        self,
+        document_id: str,
+    ):
+        return await self.get_many(
+            {
+                "document_id": document_id,
+            },
+            skip=0,
+            limit=10000,
+            sort=[
+                ("page_number", 1),
+            ],
+        )
+
     async def get_by_document(
         self,
         document_id: str,

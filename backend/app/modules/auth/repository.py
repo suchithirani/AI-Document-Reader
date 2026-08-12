@@ -13,7 +13,6 @@ class UserRepository(BaseRepository):
         created = await self.create(user)
         return User.model_validate(created)
 
-
     async def get_by_email(self, email: str):
         user = await self.get_one({"email": email})
 
@@ -126,3 +125,23 @@ class UserRepository(BaseRepository):
             return None
 
         return User.model_validate(user)
+
+    async def revoke_all_user_tokens(
+        self,
+        user_id: str,
+    ) -> int:
+
+        result = await self.collection.update_many(
+            {
+                "user_id": user_id,
+                "revoked": False,
+            },
+            {
+                "$set": {
+                    "revoked": True,
+                    "updated_at": utc_now(),
+                }
+            },
+        )
+
+        return result.modified_count

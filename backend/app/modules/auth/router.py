@@ -7,13 +7,17 @@ from app.dependencies.service import get_auth_service
 from app.modules.auth.model import User
 from app.modules.auth.schema import (
     AuthResponse,
-    ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     RefreshTokenRequest,
     RegisterRequest,
+    ResetPasswordRequest,
+    SendOtpRequest,
     UserResponse,
+    VerifyOtpRequest,
 )
 from app.modules.auth.service import AuthService
+from app.dependencies.rate_limit import rate_limit
 
 auth_router = APIRouter(
     prefix="/auth",
@@ -21,7 +25,7 @@ auth_router = APIRouter(
 )
 
 
-@auth_router.post("/register")
+@auth_router.post("/register",dependencies=[rate_limit(limit=5, window=60)],)
 async def register(
     request: Request,
     body: RegisterRequest,
@@ -38,8 +42,46 @@ async def register(
         status_code=201,
     )
 
+@auth_router.post(
+    "/verify-email",
+    dependencies=[rate_limit(limit=10, window=60)],
+)
+async def verify_email(
+    request: Request,
+    body: VerifyOtpRequest,
+    service: AuthService = Depends(
+        get_auth_service,
+    ),
+):
 
-@auth_router.post("/login")
+    result = await service.verify_email(
+        request,
+        body,
+    )
+
+    return success_response(
+        message="Email verified successfully.",
+        data=result,
+    )
+
+@auth_router.post("/resend-verification-otp",dependencies=[rate_limit(limit=3,window=300,),],
+)
+async def resend_verification_otp(
+    body: SendOtpRequest,
+    service: AuthService = Depends(
+        get_auth_service,
+    ),
+):
+
+    result = await service.resend_verification_otp(
+        body,
+    )
+
+    return success_response(
+        message=result["message"],
+    )
+
+@auth_router.post("/login",dependencies=[rate_limit(limit=10, window=60)],)
 async def login(
     request: Request,
     body: LoginRequest,
@@ -52,8 +94,7 @@ async def login(
         data=result,
     )
 
-
-@auth_router.post("/refresh")
+@auth_router.post("/refresh",dependencies=[rate_limit(limit=10, window=60)],)
 async def refresh_token(
     request: Request,
     body: RefreshTokenRequest,
@@ -67,7 +108,7 @@ async def refresh_token(
     )
 
 
-@auth_router.get("/me")
+@auth_router.get("/me",dependencies=[rate_limit(limit=10, window=60)],)
 async def me(
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
@@ -79,26 +120,51 @@ async def me(
         data=result,
     )
 
-
-@auth_router.put("/change-password")
-async def change_password(
-    request: Request,
-    body: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
-    service: AuthService = Depends(get_auth_service),
+@auth_router.post("/forgot-password",dependencies=[
+        rate_limit(limit=5, window=300,),],
+)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    service: AuthService = Depends(
+        get_auth_service,
+    ),
 ):
-    result = await service.change_password(
-        request,
-        current_user,
-        body
+
+    result = await service.forgot_password(
+        body,
     )
 
     return success_response(
         message=result["message"],
     )
 
+@auth_router.post(
+    "/reset-password",
+    dependencies=[
+        rate_limit(
+            limit=5,
+            window=300,
+        ),
+    ],
+)
+async def reset_password(
+    request: Request,
+    body: ResetPasswordRequest,
+    service: AuthService = Depends(
+        get_auth_service,
+    ),
+):
 
-@auth_router.post("/logout")
+    result = await service.reset_password(
+        request,
+        body,
+    )
+
+    return success_response(
+        message=result["message"],
+    )
+
+@auth_router.post("/logout",dependencies=[rate_limit(limit=30, window=60)],)
 async def logout(
     request: Request,
     body: RefreshTokenRequest,

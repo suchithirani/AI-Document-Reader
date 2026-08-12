@@ -15,15 +15,18 @@ class DocumentChunk(BaseModel):
     )
 
     document_id: str
-
+    document_name: str | None = None
     page_number: int
-
     chunk_index: int
-
     text: str
-
     token_count: int
+    word_count: int
+    character_count: int
 
+    has_numbers: bool = False
+    has_table: bool = False
+    has_email: bool = False
+    has_url: bool = False
     embedding: list[float] | None = None
 
     created_at: datetime

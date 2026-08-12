@@ -65,4 +65,4 @@ class BM25SearchService:
             reverse=True,
         )
 
-        return results[:top_k]
+        return results[:top_k*3]

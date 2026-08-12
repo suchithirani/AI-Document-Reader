@@ -48,6 +48,16 @@ class InternalServerException(BaseAppException):
     def __init__(self, message: str = "Internal Server Error"):
         super().__init__(message, 500)
 
+class RateLimitException(BaseAppException):
+    def __init__(self, message: str = "Too Many Requests. Please try again later."):
+        super().__init__(message, 429)
+
+class AccountLockedException(BaseAppException):
+    def __init__(self, message: str = "Account temporarily locked. Try again later."):
+        super().__init__(message, 423)
+
+
+
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(BaseAppException)

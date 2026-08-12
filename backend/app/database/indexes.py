@@ -116,6 +116,20 @@ async def create_document_indexes(db):
     await documents.create_index(
         "mime_type",
     )
+    await documents.create_index(
+        [
+            ("owner_id", ASCENDING),
+            ("file_hash", ASCENDING),
+        ],
+        unique=True,
+        partialFilterExpression={
+            "file_hash": {
+                "$exists": True,
+                "$type": "string",
+            },
+            "deleted_at": None,
+        },
+    )
 
 async def create_document_content_indexes(db):
     document_contents = db[
@@ -133,6 +147,7 @@ async def create_document_content_indexes(db):
         ],
         unique=True,
     )
+
 async def create_document_chunk_indexes(db):
 
     chunks = db[
@@ -154,6 +169,18 @@ async def create_document_chunk_indexes(db):
         unique=True,
     )
 
+async def create_processed_content_indexes(db):
+
+    collection = db[
+        CollectionName.PROCESSED_DOCUMENT_CONTENT.value
+    ]
+
+    await collection.create_index(
+        [
+            ("file_hash", ASCENDING),
+        ],
+        unique=True,
+    )
 
 async def create_indexes(db):
     await create_user_indexes(db)
@@ -163,3 +190,4 @@ async def create_indexes(db):
     await create_document_indexes(db)
     await create_document_content_indexes(db)
     await create_document_chunk_indexes(db)
+    await create_processed_content_indexes(db)

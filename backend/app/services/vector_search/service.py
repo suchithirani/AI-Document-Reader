@@ -3,7 +3,7 @@ import math
 
 class VectorSearchService:
 
-    MIN_SCORE = 0.65
+    MIN_SCORE = 0.6
 
     def cosine_similarity(
         self,
@@ -68,4 +68,4 @@ class VectorSearchService:
             reverse=True,
         )
 
-        return scored_chunks[:top_k]
+        return scored_chunks[:top_k*3]

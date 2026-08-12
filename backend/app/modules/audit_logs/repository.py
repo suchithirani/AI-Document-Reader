@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from app.common.constants import CollectionName
 from app.modules.audit_logs.model import AuditLog
 from app.repositories.base_repository import BaseRepository
+from app.common.utils.datetime import utc_now
 
 
 class AuditLogRepository(BaseRepository):
@@ -18,3 +21,21 @@ class AuditLogRepository(BaseRepository):
         created = await self.create(log)
 
         return AuditLog.model_validate(created)
+
+    async def delete_old_logs(
+        self,
+        retention_days: int,
+    ) -> int:
+        cutoff = utc_now() - timedelta(
+            days=retention_days,
+        )
+
+        result = await self.collection.delete_many(
+            {
+                "created_at": {
+                    "$lt": cutoff,
+                }
+            }
+        )
+
+        return result.deleted_count

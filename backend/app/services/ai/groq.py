@@ -1,5 +1,5 @@
 from groq import Groq
-
+import time
 from app.core.config import settings
 
 from app.common.exceptions.ai import (
@@ -20,7 +20,7 @@ class GroqAIService:
     ) -> str:
 
         try:
-
+            start = time.perf_counter()
             completion = (
                 self.client.chat.completions.create(
                     model=settings.GENERATION_MODEL,
@@ -32,21 +32,27 @@ class GroqAIService:
                     ],
                 )
             )
-
+            latency = (time.perf_counter() - start) * 1000
             answer = (
                 completion
                 .choices[0]
                 .message
                 .content
             )
-
+            usage = completion.usage
             if not answer:
 
                 raise AIResponseException(
                     "Empty response received from Groq."
                 )
 
-            return answer.strip()
+            return {
+                "answer": answer.strip(),
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
+                "latency_ms": round(latency, 2),
+            }
 
         except AIResponseException:
 
