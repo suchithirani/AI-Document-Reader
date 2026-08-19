@@ -85,7 +85,7 @@ class DocumentChunkService:
         embedding: list[float],
     ):
 
-        await self.repository.update_embedding(
+        return await self.repository.update_embedding(
             document_id,
             page_number,
             chunk_index,

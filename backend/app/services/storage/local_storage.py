@@ -71,3 +71,20 @@ class LocalStorage(BaseStorage):
         storage_path: str,
     ) -> str:
         return storage_path
+
+    async def save_bytes(
+        self,
+        data: bytes,
+        filename: str,
+    ) -> str:
+
+        path = self.upload_directory / filename
+
+        path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        path.write_bytes(data)
+
+        return str(path)

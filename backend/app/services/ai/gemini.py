@@ -1,3 +1,5 @@
+import asyncio
+
 from google import genai
 import time
 from app.core.config import settings
@@ -19,13 +21,12 @@ class GeminiAIService:
     ) -> str:
 
         try:
-            start = time.pref_counter()
-            response = (
-                self.client.models.generate_content(
-                    model=settings.GENERATION_MODEL,
-                    contents=prompt,
-                )
-            )   
+            start = time.perf_counter()
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
+                model=settings.VISION_MODEL,
+                contents=prompt,
+            )
             latency = (time.perf_counter() - start) * 1000
             usage = getattr(response, "usage", None)
             if not response.text:

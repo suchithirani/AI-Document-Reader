@@ -4,6 +4,7 @@ from PIL import (
     ImageFilter,
     ImageOps,
 )
+from pathlib import Path
 from app.common.exceptions.document import (
     OCRException,
 )
@@ -12,13 +13,19 @@ import pytesseract
 
 class ImageOCR:
 
+
     def extract_text(
         self,
-        file_path: str,
+        source: str | Path | Image.Image,
     ) -> list[str]:
 
         try:
-            image = Image.open(file_path)
+
+            if isinstance(source, Image.Image):
+                image = source.copy()
+
+            else:
+                image = Image.open(source)
 
         except Exception as exception:
             raise OCRException(

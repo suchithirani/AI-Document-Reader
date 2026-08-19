@@ -62,7 +62,7 @@ class DocumentChunkRepository(
         embedding: list[float],
     ):
 
-        await self.update_one(
+        return await self.update_one(
             {
                 "document_id": document_id,
                 "page_number": page_number,
@@ -126,6 +126,8 @@ class DocumentChunkRepository(
                     "$ne": None,
                 },
             },
+            skip=0,
+            limit=100000,
             sort=[
                 ("page_number", 1),
                 ("chunk_index", 1),

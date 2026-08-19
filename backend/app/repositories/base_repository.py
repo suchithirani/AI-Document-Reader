@@ -139,3 +139,14 @@ class BaseRepository:
             filters,
             {"$set": data},
         )
+
+    async def delete_many(
+        self,
+        filters: dict[str, Any],
+    ) -> int:
+
+        result = await self.collection.delete_many(
+            filters
+        )
+
+        return result.deleted_count

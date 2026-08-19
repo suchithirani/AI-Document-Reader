@@ -45,6 +45,7 @@ class CollectionName(StrEnum):
     AI_USAGE_LOGS = "ai_usage_logs"
     SYSTEM_METRICS = "system_metrics"
     PROCESSED_DOCUMENT_CONTENT = "processed_document_content"
+    DOCUMENT_IMAGES = "document_images"
 
 DEFAULT_PAGE = 1
 DEFAULT_LIMIT = 10

@@ -63,13 +63,21 @@ class Settings(BaseSettings):
     # ==========================
     
     GEMINI_API_KEY: str = Field(...)
-    EMBEDDING_PROVIDER: str = "gemini"
-    EMBEDDING_MODEL: str = "gemini-embedding-001"
-    GENERATION_MODEL: str = "gemini-3.6-flash"
 
-    GENERATION_PROVIDER: str = "gemini"
+    # Embedding
+    EMBEDDING_PROVIDER: str = "gemini-embedding-001"
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
+
+
+    # Text generation
+    GENERATION_PROVIDER: str = "groq"
+    GENERATION_MODEL: str = "openai/gpt-oss-120b"
     GROQ_API_KEY: str = Field(...)
 
+    # Vision
+    VISION_PROVIDER: str = "gemini"
+    VISION_MODEL: str = "gemini-3.6-flash"
+    
     # redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
     REDIS_HOST: str = Field(default="localhost")

@@ -15,9 +15,7 @@ class ChatSummaryService:
             db,
         )
 
-        self.summary_service = (
-            SummaryGenerationService()
-        )
+        self.summary_service = SummaryGenerationService(db)
 
     async def generate_summary(
         self,
@@ -41,6 +39,7 @@ class ChatSummaryService:
 
         summary = await self.summary_service.generate_summary(
             "\n".join(conversation),
+            session_id,
         )
 
         await self.repository.update_summary(

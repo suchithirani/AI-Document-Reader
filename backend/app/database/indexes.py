@@ -22,7 +22,6 @@ async def create_user_indexes(db):
         sparse=True,
     )
 
-
 async def create_refresh_token_indexes(db):
     refresh_tokens = db[
         CollectionName.REFRESH_TOKENS.value
@@ -42,7 +41,6 @@ async def create_refresh_token_indexes(db):
         [("expires_at", ASCENDING)],
         expireAfterSeconds=0,
     )
-
 
 async def create_request_log_indexes(db):
     request_logs = db[
@@ -182,6 +180,25 @@ async def create_processed_content_indexes(db):
         unique=True,
     )
 
+async def create_document_image_indexes(db):
+
+    document_images = db[
+        CollectionName.DOCUMENT_IMAGES.value
+    ]
+
+    await document_images.create_index(
+        [
+            ("document_id", ASCENDING),
+            ("page_number", ASCENDING),
+            ("image_index", ASCENDING),
+        ],
+        unique=True,
+    )
+
+    await document_images.create_index(
+        [("document_id", ASCENDING)]
+    )
+
 async def create_indexes(db):
     await create_user_indexes(db)
     await create_refresh_token_indexes(db)
@@ -191,3 +208,4 @@ async def create_indexes(db):
     await create_document_content_indexes(db)
     await create_document_chunk_indexes(db)
     await create_processed_content_indexes(db)
+    await create_document_image_indexes(db)

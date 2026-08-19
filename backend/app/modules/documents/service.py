@@ -61,7 +61,7 @@ class DocumentService:
     def __init__(self, db):
         self.repository = DocumentRepository(db)
 
-        self.storage_service = StorageService()
+        self.storage_service = StorageService(db)
 
         self.audit_log_service = AuditLogService(db)
         self.document_content_service = DocumentContentService(db)

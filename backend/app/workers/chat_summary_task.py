@@ -1,10 +1,9 @@
-import asyncio
-
 from app.core.celery import celery_app
 from app.workers.database import get_worker_database
 from app.modules.chat.summary_service import (
     ChatSummaryService,
 )
+from app.workers.base import run_async_task
 
 
 @celery_app.task(
@@ -14,7 +13,7 @@ def generate_summary_task(
     session_id: str,
 ):
 
-    asyncio.run(
+    run_async_task(
         run_summary(
             session_id,
         )

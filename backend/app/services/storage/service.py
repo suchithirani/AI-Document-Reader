@@ -3,11 +3,12 @@ from pathlib import Path
 from app.core.config import settings
 from app.services.storage.base import BaseStorage
 from app.services.storage.local_storage import LocalStorage
+from app.modules.document_images.repository import DocumentImageRepository
 
 
 class StorageService:
 
-    def __init__(self):
+    def __init__(self,db):
         self.storage = self._get_storage_provider()
 
     def _get_storage_provider(
@@ -66,6 +67,37 @@ class StorageService:
 
         if path.exists():
             path.unlink()
+
+    async def read_bytes(
+        self,
+        storage_path: str,
+    ) -> bytes:
+
+        path = self.get_file_path(
+            storage_path
+        )
+
+        return path.read_bytes()
+
+    async def load_image_bytes(
+        self,
+        image: dict,
+    ) -> bytes:
+
+        return await self.read_bytes(
+            image["storage_path"]
+        )
+
+    async def save_bytes(
+        self,
+        data: bytes,
+        filename: str,
+    ) -> str:
+
+        return await self.storage.save_bytes(
+            data=data,
+            filename=filename,
+        )
 
     def get_file_path(
         self,

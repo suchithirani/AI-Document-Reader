@@ -43,15 +43,30 @@ class GeminiEmbedding:
 
         try:
 
+            print("\n========== EMBEDDING API DEBUG ==========")
+            print("Texts received:", len(texts))
+
             response = self.client.models.embed_content(
                 model=settings.EMBEDDING_MODEL,
                 contents=texts,
             )
 
-            return [
+            embeddings = [
                 embedding.values
                 for embedding in response.embeddings
             ]
+
+            print("Embeddings returned:", len(embeddings))
+            print("=========================================\n")
+
+            if len(embeddings) != len(texts):
+                raise EmbeddingException(
+                    f"Embedding count mismatch: "
+                    f"{len(texts)} texts -> "
+                    f"{len(embeddings)} embeddings"
+                )
+
+            return embeddings
 
         except Exception as exception:
 

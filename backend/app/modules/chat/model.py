@@ -43,7 +43,7 @@ class ChatMessage(BaseModel):
     session_id: str
     role: ChatRole
     content: str
-    sources: list[dict] = Field(
+    sources: list[dict] | dict = Field(
         default_factory=list,
     )
     created_at: datetime = Field(

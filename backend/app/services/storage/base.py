@@ -37,3 +37,11 @@ class BaseStorage(ABC):
         storage_path: str,
     ) -> str:
         ...
+
+    @abstractmethod
+    async def save_bytes(
+        self,
+        data: bytes,
+        filename: str,
+    ) -> str:
+        ...
