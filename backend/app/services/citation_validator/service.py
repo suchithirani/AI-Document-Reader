@@ -14,7 +14,7 @@ class CitationValidator:
     ) -> str:
 
         valid_ids = {
-            source["id"]
+            int(source["id"])
             for source in sources
         }
 

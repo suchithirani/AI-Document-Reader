@@ -16,19 +16,15 @@ class HybridSearchService:
         self.semantic_weight = semantic_weight
         self.bonus = bonus
 
-    # =========================================================
-    # TOKENIZATION
-    # =========================================================
+    def _tokenize(
+        self,
+        text: str,
+    ) -> list[str]:
 
-    def _tokenize(self, text: str) -> list[str]:
         return re.findall(
             r"\b[a-zA-Z0-9_]+\b",
             text.lower(),
         )
-
-    # =========================================================
-    # QUERY TERMS
-    # =========================================================
 
     def _query_terms(
         self,
@@ -81,10 +77,6 @@ class HybridSearchService:
             if word not in stop_words
         ]
 
-    # =========================================================
-    # BROAD QUESTION
-    # =========================================================
-
     def _is_broad_question(
         self,
         question: str,
@@ -113,10 +105,6 @@ class HybridSearchService:
             )
         )
 
-    # =========================================================
-    # PHRASE SCORE
-    # =========================================================
-
     def _phrase_score(
         self,
         question: str,
@@ -142,6 +130,7 @@ class HybridSearchService:
         for index in range(
             len(terms) - 1
         ):
+
             phrase = (
                 f"{terms[index]} "
                 f"{terms[index + 1]}"
@@ -151,10 +140,6 @@ class HybridSearchService:
                 return 0.6
 
         return 0.0
-
-    # =========================================================
-    # TERM OVERLAP
-    # =========================================================
 
     def _term_overlap_score(
         self,
@@ -180,10 +165,6 @@ class HybridSearchService:
         )
 
         return matched / len(terms)
-
-    # =========================================================
-    # TERM SPECIFICITY
-    # =========================================================
 
     def _term_specificity(
         self,
@@ -224,10 +205,6 @@ class HybridSearchService:
             )
             for term in terms
         }
-
-    # =========================================================
-    # WEIGHTED OVERLAP
-    # =========================================================
 
     def _weighted_overlap_score(
         self,
@@ -272,31 +249,13 @@ class HybridSearchService:
             / total_weight
         )
 
-    # =========================================================
-    # DOCUMENT QUALITY
-    #
-    # Generic structural detection.
-    # No domain-specific terms.
-    # =========================================================
-
     def _content_quality_score(
         self,
         text: str,
     ) -> float:
         """
-        Estimate whether a chunk contains useful document content.
-
-        This is document-type independent.
-        It does not assume:
-        - report sections
-        - invoice fields
-        - resume sections
-        - contract terminology
-        - specific page numbers
-
-        Returns:
-            0.0 -> weak/noisy content
-            1.0 -> strong content density
+        Estimate generic text quality without assuming
+        a particular document type.
         """
 
         if not text or not text.strip():
@@ -320,10 +279,6 @@ class HybridSearchService:
 
         score = 0.0
 
-        # ---------------------------------------------------------
-        # 1. Text length
-        # ---------------------------------------------------------
-
         if word_count >= 120:
             score += 0.25
         elif word_count >= 80:
@@ -332,13 +287,6 @@ class HybridSearchService:
             score += 0.12
         elif word_count >= 20:
             score += 0.05
-
-        # ---------------------------------------------------------
-        # 2. Alphabetic content ratio
-        #
-        # Useful text generally contains a reasonable amount of
-        # natural language rather than only numbers/symbols.
-        # ---------------------------------------------------------
 
         alphabetic_chars = sum(
             char.isalpha()
@@ -360,10 +308,6 @@ class HybridSearchService:
         elif alpha_ratio >= 0.40:
             score += 0.05
 
-        # ---------------------------------------------------------
-        # 3. Sentence structure
-        # ---------------------------------------------------------
-
         sentence_count = len(
             re.findall(
                 r"[.!?](?:\s|$)",
@@ -377,13 +321,6 @@ class HybridSearchService:
             score += 0.10
         elif sentence_count == 1:
             score += 0.03
-
-        # ---------------------------------------------------------
-        # 4. Repetition penalty
-        #
-        # Headers, footers and extracted navigation text often
-        # repeat the same small set of words.
-        # ---------------------------------------------------------
 
         unique_words = len(
             set(
@@ -405,12 +342,6 @@ class HybridSearchService:
         else:
             score -= 0.10
 
-        # ---------------------------------------------------------
-        # 5. TOC / navigation structure
-        #
-        # This is structural rather than document-specific.
-        # ---------------------------------------------------------
-
         dotted_leaders = len(
             re.findall(
                 r"\.{4,}",
@@ -422,13 +353,6 @@ class HybridSearchService:
             score -= 0.30
         elif dotted_leaders >= 1:
             score -= 0.15
-
-        # ---------------------------------------------------------
-        # 6. Excessive line fragmentation
-        #
-        # OCR/table/navigation chunks can contain many extremely
-        # short lines instead of coherent text.
-        # ---------------------------------------------------------
 
         lines = [
             line.strip()
@@ -463,63 +387,6 @@ class HybridSearchService:
             min(score, 1.0),
         )
 
-    def _content_quality_bonus(
-        self,
-        text: str,
-    ) -> float:
-
-        if not text:
-            return 0.0
-
-        lowered = text.lower()
-
-        bonus = 0.0
-
-        # Headings / sections usually indicate actual document content.
-        section_patterns = (
-            r"\b\d+\.\d+\s+[A-Za-z]",
-            r"\bchapter\s+\d+",
-            r"\bintroduction\b",
-            r"\bobjective\b",
-            r"\bpurpose\b",
-            r"\bscope\b",
-            r"\brequirements?\b",
-            r"\bmethodology\b",
-            r"\bimplementation\b",
-            r"\barchitecture\b",
-            r"\bdesign\b",
-            r"\btesting\b",
-            r"\bconclusion\b",
-        )
-
-        for pattern in section_patterns:
-
-            if re.search(
-                pattern,
-                lowered,
-            ):
-                bonus += 0.04
-
-        # Actual explanatory text is generally more useful
-        # than cover/certificate material.
-        word_count = len(
-            self._tokenize(text)
-        )
-
-        if word_count >= 80:
-            bonus += 0.05
-
-        if word_count >= 150:
-            bonus += 0.05
-
-        return min(
-            bonus,
-            0.15,
-        )
-    # =========================================================
-    # MERGE
-    # =========================================================
-
     def merge(
         self,
         vector_results: list,
@@ -529,10 +396,6 @@ class HybridSearchService:
     ):
 
         merged = {}
-
-        # =====================================================
-        # NORMALIZATION
-        # =====================================================
 
         vector_max = max(
             (
@@ -549,10 +412,6 @@ class HybridSearchService:
             ),
             default=1.0,
         )
-
-        # =====================================================
-        # VECTOR RESULTS
-        # =====================================================
 
         for result in vector_results:
 
@@ -577,10 +436,6 @@ class HybridSearchService:
                 "matched_by_vector": True,
                 "matched_by_keyword": False,
             }
-
-        # =====================================================
-        # KEYWORD RESULTS
-        # =====================================================
 
         for result in keyword_results:
 
@@ -616,10 +471,6 @@ class HybridSearchService:
                     "matched_by_keyword": True,
                 }
 
-        # =====================================================
-        # QUERY ANALYSIS
-        # =====================================================
-
         broad_question = (
             self._is_broad_question(
                 question
@@ -638,19 +489,11 @@ class HybridSearchService:
             )
         )
 
-        # =====================================================
-        # SCORE CANDIDATES
-        # =====================================================
-
         final_results = []
 
         for item in merged.values():
 
             chunk = item["chunk"]
-
-            # -------------------------------------------------
-            # Phrase matching
-            # -------------------------------------------------
 
             phrase_score = (
                 self._phrase_score(
@@ -659,20 +502,12 @@ class HybridSearchService:
                 )
             )
 
-            # -------------------------------------------------
-            # Term overlap
-            # -------------------------------------------------
-
             overlap_score = (
                 self._term_overlap_score(
                     question,
                     chunk.text,
                 )
             )
-
-            # -------------------------------------------------
-            # Weighted overlap
-            # -------------------------------------------------
 
             weighted_overlap = (
                 self._weighted_overlap_score(
@@ -682,18 +517,10 @@ class HybridSearchService:
                 )
             )
 
-            # -------------------------------------------------
-            # Semantic lexical signal
-            # -------------------------------------------------
-
             semantic_score = max(
                 phrase_score * 0.5,
                 weighted_overlap,
             )
-
-            # =================================================
-            # BASE HYBRID SCORE
-            # =================================================
 
             score = (
                 item["vector_score"]
@@ -710,25 +537,11 @@ class HybridSearchService:
                 * self.semantic_weight
             )
 
-            # =================================================
-            # RETRIEVAL AGREEMENT BONUS
-            # =================================================
-
             if (
                 item["matched_by_vector"]
                 and item["matched_by_keyword"]
             ):
                 score += self.bonus
-
-            # =================================================
-            # CONTENT QUALITY
-            #
-            # Document-type independent.
-            #
-            # This evaluates whether the chunk contains useful
-            # natural-language content rather than assuming
-            # a particular document type.
-            # =================================================
 
             content_quality = (
                 self._content_quality_score(
@@ -736,64 +549,40 @@ class HybridSearchService:
                 )
             )
 
-            # Keep this deliberately small so that
-            # content quality cannot overpower semantic
-            # relevance.
             content_bonus = (
                 content_quality * 0.15
             )
 
             score += content_bonus
 
-            # =================================================
-            # FINAL RESULT
-            # =================================================
-
             final_results.append(
                 {
                     "chunk": chunk,
                     "score": score,
-
                     "vector_score": item[
                         "vector_score"
                     ],
-
                     "keyword_score": item[
                         "keyword_score"
                     ],
-
                     "phrase_score": phrase_score,
-
                     "overlap_score": overlap_score,
-
                     "weighted_overlap": (
                         weighted_overlap
                     ),
-
                     "content_quality": (
                         content_quality
                     ),
-
                     "content_bonus": (
                         content_bonus
                     ),
                 }
             )
 
-        # =====================================================
-        # SORT
-        # =====================================================
-
         final_results.sort(
             key=lambda item: item["score"],
             reverse=True,
         )
-
-        # =====================================================
-        # BROAD QUESTION DIVERSITY
-        #
-        # Prefer different pages first.
-        # =====================================================
 
         if broad_question:
 
@@ -816,16 +605,10 @@ class HybridSearchService:
                     result
                 )
 
-                used_pages.add(
-                    page_key
-                )
+                used_pages.add(page_key)
 
                 if len(diverse_results) >= top_k:
                     break
-
-            # -------------------------------------------------
-            # Fill remaining slots
-            # -------------------------------------------------
 
             selected_keys = {
                 (
@@ -855,53 +638,5 @@ class HybridSearchService:
                     break
 
             final_results = diverse_results
-
-        # =====================================================
-        # DEBUG
-        # =====================================================
-
-        print(
-            "\n========== HYBRID RESULTS =========="
-        )
-
-        print(
-            f"Broad question: {broad_question}"
-        )
-
-        print(
-            f"Candidates: {len(final_results)}"
-        )
-
-        for rank, result in enumerate(
-            final_results[:15],
-            start=1,
-        ):
-
-            chunk = result["chunk"]
-
-            print(
-                f"{rank}. "
-                f"page={chunk.page_number}, "
-                f"chunk={chunk.chunk_index}, "
-                f"final={result['score']:.4f}, "
-                f"vector={result['vector_score']:.4f}, "
-                f"keyword={result['keyword_score']:.4f}, "
-                f"phrase={result['phrase_score']:.4f}, "
-                f"overlap={result['overlap_score']:.4f}, "
-                f"weighted_overlap="
-                f"{result['weighted_overlap']:.4f}, "
-                f"content_quality="
-                f"{result['content_quality']:.4f}, "
-                f"content_bonus="
-                f"{result['content_bonus']:.4f}"
-            )
-
-            print(
-                f"   text={chunk.text[:250]!r}"
-            )
-
-        print(
-            "====================================\n"
-        )
 
         return final_results[:top_k]

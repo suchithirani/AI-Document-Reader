@@ -1,17 +1,18 @@
 from google import genai
 from google.genai import types
 
-from app.core.config import settings
 from app.common.exceptions.ai import (
     AIAuthenticationException,
     AIResponseException,
 )
+from app.core.config import settings
+from app.services.ai.vision.provider import VisionProvider
 
 
-class GeminiVision:
+class GeminiVision(VisionProvider):
+    """Gemini implementation of the vision provider."""
 
-    def __init__(self):
-
+    def __init__(self) -> None:
         self.client = genai.Client(
             api_key=settings.GEMINI_API_KEY,
         )
@@ -21,15 +22,27 @@ class GeminiVision:
         prompt: str,
         images: list[dict],
     ) -> str:
+        """
+        Analyze document images using Gemini.
 
+        Args:
+            prompt: Instructions for visual analysis.
+            images: Images with their bytes and metadata.
+
+        Returns:
+            Gemini's visual analysis.
+
+        Raises:
+            AIAuthenticationException: If Gemini authentication fails.
+            AIResponseException: If image processing or Gemini response fails.
+        """
         if not images:
             return ""
 
         try:
-
             contents = [
                 types.Part.from_text(
-                    text=prompt
+                    text=prompt,
                 )
             ]
 
@@ -41,10 +54,7 @@ class GeminiVision:
             }
 
             for image in images:
-
-                image_bytes = image.get(
-                    "bytes"
-                )
+                image_bytes = image.get("bytes")
 
                 if not image_bytes:
                     raise AIResponseException(
@@ -52,22 +62,16 @@ class GeminiVision:
                     )
 
                 extension = (
-                    image.get(
-                        "extension",
-                        "jpeg",
-                    )
+                    image.get("extension", "jpeg")
                     .lower()
                     .lstrip(".")
                 )
 
-                mime_type = mime_types.get(
-                    extension
-                )
+                mime_type = mime_types.get(extension)
 
-                if not mime_type:
+                if mime_type is None:
                     raise AIResponseException(
-                        f"Unsupported image format: "
-                        f"{extension}"
+                        f"Unsupported image format: {extension}"
                     )
 
                 contents.append(
@@ -79,37 +83,35 @@ class GeminiVision:
 
             response = (
                 await self.client.aio.models.generate_content(
-                    model=settings.VISION_MODEL,
+                    model=settings.GEMINI_VISION_MODEL,
                     contents=contents,
                 )
             )
 
-            answer = (
-                response.text
-                or ""
-            ).strip()
+            answer = (response.text or "").strip()
 
             if not answer:
                 raise AIResponseException(
-                    "Empty vision response received "
-                    "from Gemini."
+                    "Empty vision response received from Gemini."
                 )
 
             return answer
+
+        except AIAuthenticationException:
+            raise
 
         except AIResponseException:
             raise
 
         except Exception as exception:
-
             message = str(exception)
-            lower = message.lower()
+            lower_message = message.lower()
 
             if (
-                "api key" in lower
-                or "authentication" in lower
-                or "unauthorized" in lower
-                or "permission" in lower
+                "api key" in lower_message
+                or "authentication" in lower_message
+                or "unauthorized" in lower_message
+                or "permission" in lower_message
             ):
                 raise AIAuthenticationException(
                     message

@@ -134,7 +134,7 @@ class ChatRepository(BaseRepository):
     async def get_recent_messages(
         self,
         session_id: str,
-        limit: int = 6,
+        limit: int = 10,
     ) -> list[ChatMessage]:
 
         cursor = (

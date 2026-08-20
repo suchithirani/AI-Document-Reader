@@ -75,9 +75,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = Field(...)
 
     # Vision
-    VISION_PROVIDER: str = "gemini"
-    VISION_MODEL: str = "gemini-3.6-flash"
-    
+    GEMINI_VISION_MODEL: str = "gemini-3.6-flash"
+    GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
+
     # redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
     REDIS_HOST: str = Field(default="localhost")

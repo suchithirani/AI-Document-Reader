@@ -1,24 +1,39 @@
 import asyncio
 from collections import defaultdict
 
+from app.services.ai.vision.gemini import GeminiVision
+from app.services.ai.vision.groq import GroqVision
 from app.services.ai.service import AIService
-from app.services.ai.vision_prompt import (
+from app.services.ai.prompts.vision_prompt import (
     VISION_ANALYSIS_PROMPT,
 )
+from app.services.ai.vision.router import VisionRouter
 
 
 class VisionService:
 
     MAX_IMAGES_PER_PAGE_REQUEST = 2
-    MAX_VISION_PAGES = 2
-    VISION_TIMEOUT_SECONDS=15
+    MAX_VISION_PAGES = 5
+
+    VISION_TIMEOUT_SECONDS = 15
 
     def __init__(
         self,
-        ai_service: AIService,
         document_image_service,
+        ai_service: AIService | None = None,
     ):
-        self.ai_service = ai_service
+
+        self.ai_service = (
+            ai_service or AIService()
+        )
+
+        self.vision_router = VisionRouter(
+            providers=[
+                GeminiVision(),
+                GroqVision(),
+            ]
+        )
+
         self.document_image_service = (
             document_image_service
         )
@@ -29,30 +44,19 @@ class VisionService:
         page_number: int,
     ) -> str:
 
-        # Keep the dedicated vision instructions as the
-        # authoritative instruction set. The page context
-        # and user request are added separately.
-        #
-        # This prevents the page-level prompt from replacing
-        # the strict "final answer only" instructions in
-        # VISION_ANALYSIS_PROMPT.
+        base_prompt = (
+            VISION_ANALYSIS_PROMPT.strip()
+        )
 
-        base_prompt = VISION_ANALYSIS_PROMPT.strip()
-
-        # analyze_images() passes VISION_ANALYSIS_PROMPT
-        # directly because that method currently has no
-        # separate user-question argument.
-        #
-        # In that case, do not incorrectly label the whole
-        # vision instruction as the user's request.
         if prompt.strip() == base_prompt:
 
             user_request = (
-                "Describe and identify the provided "
-                "document image."
+                "Describe and identify the "
+                "provided document image."
             )
 
         else:
+
             user_request = prompt.strip()
 
         return f"""
@@ -67,12 +71,13 @@ USER REQUEST
 PAGE IMAGE RULES
 - All images in this request belong to page {page_number}.
 - Analyze them together when there is more than one image.
-- They may be crops or sections of the same diagram.
+- They may be crops or sections of the same page.
 - Combine related information into ONE answer.
-- Do not repeat information visible in multiple crops.
+- Include all relevant visible information needed to answer the request.
+- If the page contains both visual elements and readable text, consider both.
 - Use only information actually visible in the images.
 - If text is unclear, say that it is unclear.
-- Do not guess missing labels or relationships.
+- Do not guess missing labels, values, relationships, or structure.
 
 FINAL OUTPUT RULE
 Return ONLY the final visible answer.
@@ -120,6 +125,67 @@ Start directly with the requested answer.
 
         return vision_images
 
+    async def _analyze_page_batch(
+        self,
+        page_prompt: str,
+        batch: list[dict],
+        page_number: int,
+    ) -> str:
+        """
+        Make ONE request to VisionRouter.
+
+        VisionRouter is responsible for:
+        Gemini 429 -> Groq fallback
+        503 -> limited retry
+        timeout -> limited retry
+
+        This method intentionally does NOT retry the
+        complete provider chain.
+        """
+
+        try:
+
+            print(
+                "VISION REQUEST:",
+                "page=",
+                page_number,
+                "| images=",
+                len(batch),
+            )
+
+            result = await asyncio.wait_for(
+                self.vision_router.analyze_images(
+                    prompt=page_prompt,
+                    images=batch,
+                ),
+                timeout=(
+                    self.VISION_TIMEOUT_SECONDS
+                ),
+            )
+
+            return result or ""
+
+        except asyncio.TimeoutError:
+
+            print(
+                "Vision request timeout:",
+                f"page={page_number}",
+                f"timeout="
+                f"{self.VISION_TIMEOUT_SECONDS}s",
+            )
+
+            return ""
+
+        except Exception as exception:
+
+            print(
+                "Vision page analysis failed:",
+                f"page={page_number}",
+                f"error={exception}",
+            )
+
+            return ""
+
     async def analyze_images_by_page(
         self,
         images: list[dict],
@@ -140,8 +206,6 @@ Start directly with the requested answer.
 
             grouped[key].append(image)
 
-        results = []
-
         page_groups = sorted(
             grouped.items(),
             key=lambda item: (
@@ -150,22 +214,16 @@ Start directly with the requested answer.
             ),
         )
 
-        # Hard safety limit
         page_groups = page_groups[
             :self.MAX_VISION_PAGES
         ]
+
+        results = []
 
         for (
             document_id,
             page_number,
         ), page_images in page_groups:
-
-            # Stop immediately if task is cancelled
-            if asyncio.current_task().cancelling():
-                print(
-                    "🛑 Vision task cancellation detected."
-                )
-                break
 
             print(
                 "VISION PAGE:",
@@ -183,7 +241,7 @@ Start directly with the requested answer.
             if not vision_images:
                 continue
 
-            rate_limited = False
+            page_results = []
 
             for start in range(
                 0,
@@ -191,136 +249,46 @@ Start directly with the requested answer.
                 self.MAX_IMAGES_PER_PAGE_REQUEST,
             ):
 
-                # Check cancellation before every API request
-                if asyncio.current_task().cancelling():
-                    print(
-                        "🛑 Vision task cancellation detected."
-                    )
-                    break
-
                 batch = vision_images[
                     start:
                     start
                     + self.MAX_IMAGES_PER_PAGE_REQUEST
                 ]
 
-                try:
+                page_prompt = (
+                    self._build_page_prompt(
+                        prompt=prompt,
+                        page_number=page_number,
+                    )
+                )
 
-                    page_prompt = (
-                        self._build_page_prompt(
-                            prompt=prompt,
-                            page_number=page_number,
-                        )
+                result = (
+                    await self._analyze_page_batch(
+                        page_prompt=page_prompt,
+                        batch=batch,
+                        page_number=page_number,
+                    )
+                )
+
+                if result:
+                    page_results.append(
+                        result
                     )
 
-                    print(
-                        "VISION REQUEST:",
-                        "page=",
-                        page_number,
-                        "| images=",
-                        len(batch),
-                    )
+            if page_results:
 
-                    print(
-                        "VISION PROMPT HAS OUTPUT RULE:",
-                        "FINAL OUTPUT RULE" in page_prompt,
-                    )
-
-                    try:
-                        result = await asyncio.wait_for(
-                            self.ai_service.analyze_images(
-                                prompt=page_prompt,
-                                images=batch,
-                            ),
-                            timeout=self.VISION_TIMEOUT_SECONDS,
-                        )
-
-                    except asyncio.TimeoutError:
-
-                        print(
-                            "🛑 Vision timeout:",
-                            "page=",
-                            page_number,
-                            "| timeout=",
-                            self.VISION_TIMEOUT_SECONDS,
-                            "seconds",
-                        )
-
-                        results.append(
-                            {
-                                "document_id": document_id,
-                                "page_number": page_number,
-                                "image_count": len(batch),
-                                "result": "",
-                                "error": (
-                                    "Vision request timed out."
-                                ),
-                            }
-                        )
-
-                        continue
-
-                    results.append(
-                        {
-                            "document_id": document_id,
-                            "page_number": page_number,
-                            "image_count": len(batch),
-                            "result": result,
-                        }
-                    )
-
-                except asyncio.CancelledError:
-                    print(
-                        "🛑 Vision request cancelled."
-                    )
-                    raise
-
-                except Exception as exception:
-
-                    message = str(
-                        exception
-                    ).lower()
-
-                    print(
-                        "Vision page analysis failed:",
-                        "page=",
-                        page_number,
-                        "| error=",
-                        str(exception),
-                    )
-
-                    results.append(
-                        {
-                            "document_id": document_id,
-                            "page_number": page_number,
-                            "image_count": len(batch),
-                            "result": "",
-                            "error": str(exception),
-                        }
-                    )
-
-                    if (
-                        "429" in message
-                        or "rate limit" in message
-                        or "too many requests" in message
-                    ):
-
-                        print(
-                            "🛑 Groq Vision rate limit detected."
-                        )
-
-                        print(
-                            "🛑 Stopping ALL remaining "
-                            "Vision requests."
-                        )
-
-                        rate_limited = True
-                        break
-
-            # Important:
-            # stop the OUTER page loop too
-            if rate_limited:
-                break
+                results.append(
+                    {
+                        "document_id": document_id,
+                        "page_number": page_number,
+                        "image_count": len(
+                            vision_images
+                        ),
+                        "result": "\n\n".join(
+                            page_results
+                        ),
+                    }
+                )
 
         return results
 
@@ -350,7 +318,8 @@ Start directly with the requested answer.
                 continue
 
             output.append(
-                f"Page {result['page_number']}:\n"
+                f"Page "
+                f"{result['page_number']}:\n"
                 f"{result['result']}"
             )
 

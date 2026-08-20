@@ -16,7 +16,20 @@ class UserRole(StrEnum):
     USER = "user"
 
 
+class QueryIntent(StrEnum):
+    GENERAL = "general"
+    FACTUAL = "factual"
+    EXPLANATION = "explanation"
+    SUMMARY = "summary"
+    COMPARISON = "comparison"
+    EXTRACTION = "extraction"
+    TOC = "toc"
 
+
+class QueryScope(StrEnum):
+    GLOBAL = "global"
+    TARGETED = "targeted"
+    PAGE = "page"
 
 
 class SupportedFileType(StrEnum):
