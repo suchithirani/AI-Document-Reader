@@ -438,7 +438,6 @@ class DocumentService:
                 )
 
             if document.status in (
-                DocumentStatus.QUEUED,
                 DocumentStatus.OCR_PROCESSING,
                 DocumentStatus.CHUNKING,
                 DocumentStatus.EMBEDDING,
@@ -459,6 +458,8 @@ class DocumentService:
                 "queued_documents": [],
                 "count": 0,
             }
+
+        await self.response_cache.delete(f"documents:{current_user.id}:0:20")
 
         process_documents_batch_task.delay(
             owner_id=str(current_user.id),
@@ -485,4 +486,4 @@ class DocumentService:
         return {
             "queued_documents": queued_documents,
             "count": len(queued_documents),
-        }    
+        }

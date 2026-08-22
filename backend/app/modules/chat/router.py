@@ -109,6 +109,32 @@ async def send_message(
         data=result,
     )
 
+from fastapi.responses import StreamingResponse
+import json
+
+@chat_router.post("/sessions/{session_id}/messages/stream", dependencies=[rate_limit(limit=30, window=60)])
+async def send_message_stream(
+    session_id: str,
+    body: SendMessageRequest,
+    current_user: User = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
+):
+    async def event_generator():
+        try:
+            async for chunk in service.send_message_stream(
+                owner_id=current_user.id,
+                session_id=session_id,
+                question=body.question,
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+    )
+
 
 @chat_router.get("/sessions/{session_id}/messages",dependencies=[rate_limit(limit=30, window=60)],)
 async def get_messages(

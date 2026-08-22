@@ -25,6 +25,7 @@ from app.modules.documents.content_repository import (
 from app.common.utils.datetime import utc_now
 from app.modules.document_images.service import DocumentImageService
 from app.services.document_images.pdf_image_extractor import PDFImageExtractor
+from app.services.cache.response import ResponseCache
 
 
 
@@ -39,13 +40,16 @@ class DocumentProcessingService:
         self.document_content_service = DocumentContentService(db)
         self.audit_log_service = AuditLogService(db)
         self.document_chunk_service = DocumentChunkService(db)
-        self.storage_service = StorageService()
+        self.storage_service = StorageService(db)
         self.embedding_service = EmbeddingService(settings.EMBEDDING_PROVIDER)
         self.chunking_service = ChunkingService()
         self.ocr_service = OCRService()
         self.processing_lock_service = WorkerProcessingLockService()
         self.pdf_image_extractor = PDFImageExtractor()
+        from app.repositories.qdrant_repository import QdrantRepository
+        self.qdrant_repo = QdrantRepository()
         self.document_image_service = DocumentImageService(db)
+        self.response_cache = ResponseCache()
 
     async def process_documents(
         self,
@@ -99,6 +103,13 @@ class DocumentProcessingService:
                     chunks=item["chunks"],
                 )
 
+            # Trigger Proactive Insights analysis after successful batch processing
+            from app.workers.ai_tasks import generate_proactive_insights_task
+            generate_proactive_insights_task.delay(
+                owner_id=owner_id,
+                document_ids=document_ids,
+            )
+
         except Exception as exception:
 
             logger.exception(
@@ -112,6 +123,10 @@ class DocumentProcessingService:
                     await self.repository.update_status(
                         document_id,
                         DocumentStatus.FAILED,
+                    )
+                    
+                    await self.response_cache.delete(
+                        f"documents:{owner_id}:0:20"
                     )
 
                 except Exception:
@@ -292,6 +307,7 @@ class DocumentProcessingService:
             chunks,
             embeddings,
         ):
+            chunk.embedding = embedding
 
             updated = await self.document_chunk_service.update_embedding(
                 document_id=chunk.document_id,
@@ -521,33 +537,25 @@ class DocumentProcessingService:
 
         chunk_start = time.perf_counter()
 
-        save_tasks = []
-
-        for page_number, page_text in enumerate(
-            pages,
-            start=1,
-        ):
-
-            chunks = await asyncio.to_thread(
+        async def process_page_chunk(page_num, page_txt):
+            page_chunks = await asyncio.to_thread(
                 self.chunking_service.split_text,
-                page_text,
+                page_txt,
             )
-
-            if chunks:
-
-                save_tasks.append(
-                    self.document_chunk_service.save_chunks(
-                        document_id=document_id,
-                        page_number=page_number,
-                        chunks=chunks,
-                    )
+            if page_chunks:
+                await self.document_chunk_service.save_chunks(
+                    document_id=document_id,
+                    page_number=page_num,
+                    chunks=page_chunks,
                 )
 
-        if save_tasks:
+        chunk_tasks = [
+            process_page_chunk(page_number, page_text)
+            for page_number, page_text in enumerate(pages, start=1)
+        ]
 
-            await asyncio.gather(
-                *save_tasks
-            )
+        if chunk_tasks:
+            await asyncio.gather(*chunk_tasks)
 
         logger.info(
             "Chunking completed for %s in %.2f seconds",
@@ -613,9 +621,17 @@ class DocumentProcessingService:
         chunks,
     ):
 
+        if chunks:
+            self.qdrant_repo.upsert_chunks(chunks, owner_id)
+            logger.info("Synced %d chunks to Qdrant.", len(chunks))
+
         await self.repository.update_status(
             str(document.id),
             DocumentStatus.READY,
+        )
+
+        await self.response_cache.delete(
+            f"documents:{owner_id}:0:20"
         )
 
         await self.audit_log_service.create_log(

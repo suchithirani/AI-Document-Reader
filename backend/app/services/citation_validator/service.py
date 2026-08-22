@@ -4,7 +4,7 @@ import re
 class CitationValidator:
 
     CITATION_PATTERN = re.compile(
-        r"\[(\d+)\]"
+        r"(?:\[|【)(\d+)(?:\]|】)"
     )
 
     def validate(
@@ -27,7 +27,7 @@ class CitationValidator:
             )
 
             if source_id in valid_ids:
-                return match.group(0)
+                return f"[{source_id}]"
 
             return ""
 

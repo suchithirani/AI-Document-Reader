@@ -218,6 +218,7 @@ class ChatService:
 
         history = await self.repository.get_recent_messages(
             session_id=session_id,
+            limit=4,
         )
 
         result = await self.search_service.search(
@@ -285,3 +286,110 @@ class ChatService:
         return await self.repository.get_messages(
             session_id
         )
+    async def send_message_stream(
+        self,
+        owner_id: str,
+        session_id: str,
+        question: str,
+    ):
+
+        session = await self.repository.get_session(
+            session_id
+        )
+
+        if session is None:
+
+            raise NotFoundException(
+                "Chat session not found."
+            )
+
+        if session.owner_id != owner_id:
+
+            raise ForbiddenException(
+                "You are not allowed to access this chat."
+            )
+
+        document_ids = (
+            await self.chat_session_document_repository.get_document_ids(
+                session_id,
+            )
+        )
+        print("DOCUMENT IDS:", document_ids)
+
+        for document_id in document_ids:
+
+            document = (
+                await self.document_repository.get_document_by_id(
+                    document_id,
+                )
+            )
+
+            if document is None:
+                raise DocumentNotFoundException()
+
+            if document.owner_id != owner_id:
+                raise ForbiddenException(
+                    "You are not allowed to access this document."
+                )
+
+            if document.status != DocumentStatus.READY:
+                raise BadRequestException(
+                    f"{document.original_filename} has not been processed yet."
+                )
+
+        await self.repository.create_message(
+            {
+                "session_id": session_id,
+                "role": ChatRole.USER,
+                "content": question,
+                "sources": [],
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+            }
+        )
+
+
+        history = await self.repository.get_recent_messages(
+            session_id=session_id,
+            limit=4,
+        )
+
+        import json
+        sources = None
+        async for chunk in self.search_service.search_stream(
+            owner_id=owner_id,
+            session_id=session_id,
+            document_ids=document_ids,
+            question=question,
+            history=history,
+            summary=session.summary,
+        ):
+            if chunk["type"] == "chunk":
+                yield chunk
+            elif chunk["type"] == "sources":
+                sources = chunk["content"]
+                yield chunk
+            elif chunk["type"] == "done":
+                answer = chunk["content"]
+                await self.repository.create_message(
+                    {
+                        "session_id": session_id,
+                        "role": ChatRole.ASSISTANT,
+                        "content": answer,
+                        "sources": sources,
+                        "created_at": datetime.now(UTC),
+                        "updated_at": datetime.now(UTC),
+                    }
+                )
+                messages = await self.repository.get_messages(session_id)
+                if len(messages) % 10 == 0:
+                    generate_summary_task.delay(session_id=session_id)
+                
+                if not session.title_generated:
+                    await self.repository.mark_title_generated(session_id)
+                    generate_chat_title_task.delay(
+                        session_id=session_id,
+                        question=question,
+                        answer=answer,
+                    )
+

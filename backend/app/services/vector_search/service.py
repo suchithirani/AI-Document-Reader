@@ -1,71 +1,43 @@
-import math
+import logging
+from typing import List, Dict, Any
 
+from app.repositories.qdrant_repository import QdrantRepository
+
+logger = logging.getLogger(__name__)
 
 class VectorSearchService:
-
-    MIN_SCORE = 0.6
-
-    def cosine_similarity(
-        self,
-        embedding1: list[float],
-        embedding2: list[float],
-    ) -> float:
-
-        dot = sum(
-            a * b
-            for a, b in zip(
-                embedding1,
-                embedding2,
-            )
-        )
-
-        norm1 = math.sqrt(
-            sum(
-                a * a
-                for a in embedding1
-            )
-        )
-
-        norm2 = math.sqrt(
-            sum(
-                b * b
-                for b in embedding2
-            )
-        )
-
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-
-        return dot / (norm1 * norm2)
+    def __init__(self):
+        self.qdrant_repo = QdrantRepository()
+        self.MIN_SCORE = 0.6
 
     def search(
         self,
-        query_embedding: list[float],
-        chunks,
+        query_embedding: List[float],
+        owner_id: str,
+        document_ids: List[str] = None,
         top_k: int = 5,
-    ):
+    ) -> List[Dict[str, Any]]:
+        """
+        Uses Qdrant to find the most similar chunks based on the embedding.
+        Filters strictly by the user's owner_id and optionally document_ids.
+        """
+        results = self.qdrant_repo.search(
+            query_embedding=query_embedding,
+            owner_id=owner_id,
+            document_ids=document_ids,
+            top_k=top_k
+        )
+        
+        from types import SimpleNamespace
 
         scored_chunks = []
-
-        for chunk in chunks:
-
-            score = self.cosine_similarity(
-                query_embedding,
-                chunk.embedding,
-            )
-
-            # if score >= self.MIN_SCORE:
-
+        for result in results:
             scored_chunks.append(
                 {
-                    "score": score,
-                    "chunk": chunk,
+                    "score": result["score"],
+                    "chunk": SimpleNamespace(**result["chunk"]),
+                    "raw_payload": result["chunk"]
                 }
             )
 
-        scored_chunks.sort(
-            key=lambda x: x["score"],
-            reverse=True,
-        )
-
-        return scored_chunks[:top_k*3]
+        return scored_chunks[:top_k * 3]

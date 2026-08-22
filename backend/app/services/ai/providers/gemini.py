@@ -21,12 +21,14 @@ class GeminiAIService:
     async def answer_question(
         self,
         prompt: str,
+        model: str | None = None,
     ) -> dict:
         """
         Generate a text response using Gemini.
 
         Args:
             prompt: Prompt sent to the model.
+            model: Optional specific model name.
 
         Returns:
             Generated answer and usage information.
@@ -36,7 +38,7 @@ class GeminiAIService:
 
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model=settings.GENERATION_MODEL,
+                model=model or settings.GENERATION_MODEL,
                 contents=prompt,
             )
 
@@ -100,6 +102,47 @@ class GeminiAIService:
 
         except Exception as exception:
 
+            message = str(exception)
+            lower = message.lower()
+
+            if (
+                "api key" in lower
+                or "authentication" in lower
+                or "unauthorized" in lower
+                or "permission" in lower
+            ):
+                raise AIAuthenticationException(
+                    message
+                ) from exception
+
+            raise AIResponseException(
+                message
+            ) from exception
+
+    async def answer_question_stream(
+        self,
+        prompt: str,
+    ):
+        """
+        Generate a text response stream using Gemini.
+
+        Args:
+            prompt: Prompt sent to the model.
+
+        Yields:
+            Text chunks as they are generated.
+        """
+        try:
+            response_stream = await self.client.aio.models.generate_content_stream(
+                model=settings.GENERATION_MODEL,
+                contents=prompt,
+            )
+            
+            async for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
+
+        except Exception as exception:
             message = str(exception)
             lower = message.lower()
 

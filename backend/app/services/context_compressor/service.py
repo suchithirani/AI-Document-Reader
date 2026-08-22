@@ -14,7 +14,7 @@ class ContextCompressor:
 
             text = chunk.text.strip()
 
-            key = text[:150]
+            key = (chunk.document_id, text[:150])
 
             if key in seen:
                 continue

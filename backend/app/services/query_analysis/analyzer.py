@@ -148,7 +148,7 @@ class QueryAnalyzer:
 
         # TOC is NOT a broad semantic search.
         if intent == QueryIntent.TOC:
-            return False
+            return True
 
         if intent == QueryIntent.SUMMARY:
             return True
@@ -229,7 +229,7 @@ class QueryAnalyzer:
 
         # TOC should retrieve very few candidate chunks.
         if intent == QueryIntent.TOC:
-            return 3
+            return 10
 
         if scope == QueryScope.PAGE:
             return 10

@@ -7,7 +7,9 @@ from app.services.embedding.openai import (
 from app.services.embedding.local import (
     LocalEmbedding,
 )
-
+from app.services.embedding.ollama import (
+    OllamaEmbedding,
+)
 
 class EmbeddingFactory:
 
@@ -26,6 +28,9 @@ class EmbeddingFactory:
 
         if provider == "local":
             return LocalEmbedding()
+
+        if provider == "ollama":
+            return OllamaEmbedding()
 
         raise ValueError(
             "Unsupported embedding provider."

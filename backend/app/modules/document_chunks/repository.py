@@ -33,12 +33,15 @@ class DocumentChunkRepository(
 
     async def get_document_chunks(
         self,
-        document_id: str,
+        document_id: str | list[str],
     ) -> list[DocumentChunk]:
+        
+        if isinstance(document_id, str):
+            document_id = [document_id]
 
         chunks = await self.get_many(
             filters={
-                "document_id": document_id,
+                "document_id": {"$in": document_id},
             },
             sort=[
                 ("page_number", 1),

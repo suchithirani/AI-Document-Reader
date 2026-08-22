@@ -15,7 +15,7 @@ celery_app.conf.imports = (
     "app.workers.email_tasks",
     "app.workers.chat_tasks",
     "app.workers.chat_summary_task",
+    "app.workers.ai_tasks",
 )
-
 celery_app.conf.beat_schedule = BEAT_SCHEDULE
 celery_app.conf.timezone = "Asia/Kolkata"

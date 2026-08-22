@@ -1,4 +1,4 @@
-﻿from functools import lru_cache
+from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: str = Field(default="pdf,png,jpg,jpeg")
 
     # ==========================
+    # Vector Database (Qdrant)
+    # ==========================
+    QDRANT_URL: str = Field(default="")
+    QDRANT_PATH: str = Field(default="./storage/qdrant")
+    QDRANT_API_KEY: str = Field(default="")
+    QDRANT_COLLECTION_NAME: str = Field(default="document_chunks")
+    
+    # ==========================
     # AI
     # ==========================
     
@@ -75,8 +83,15 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = Field(...)
 
     # Vision
+    VISION_PROVIDER: str = "gemini"
     GEMINI_VISION_MODEL: str = "gemini-3.6-flash"
     GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
+
+    # Ollama (Local Air-Gapped Mode)
+    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
+    OLLAMA_GENERATION_MODEL: str = Field(default="llama3.1")
+    OLLAMA_EMBEDDING_MODEL: str = Field(default="nomic-embed-text")
+    OLLAMA_VISION_MODEL: str = Field(default="llava")
 
     # redis
     REDIS_URL: str = Field(default="redis://localhost:6379/0")

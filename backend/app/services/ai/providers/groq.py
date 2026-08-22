@@ -22,22 +22,24 @@ class GroqAIService:
     async def answer_question(
         self,
         prompt: str,
+        model: str | None = None,
     ) -> dict:
         """
         Generate a text response using Groq.
 
         Args:
             prompt: Prompt sent to the model.
+            model: Optional specific model name.
 
         Returns:
             Generated answer and usage information.
-        """
+            """
         try:
             start = time.perf_counter()
 
             completion = await asyncio.to_thread(
                 self.client.chat.completions.create,
-                model=settings.GENERATION_MODEL,
+                model=model or settings.GENERATION_MODEL,
                 messages=[
                     {
                         "role": "user",
@@ -90,6 +92,55 @@ class GroqAIService:
 
         except Exception as exception:
 
+            message = str(exception)
+            lower = message.lower()
+
+            if (
+                "invalid api key" in lower
+                or "expired_api_key" in lower
+                or "unauthorized" in lower
+                or "authentication" in lower
+            ):
+                raise AIAuthenticationException(
+                    message
+                ) from exception
+
+            raise AIResponseException(
+                message
+            ) from exception
+
+    async def answer_question_stream(
+        self,
+        prompt: str,
+    ):
+        """
+        Generate a text response stream using Groq.
+
+        Args:
+            prompt: Prompt sent to the model.
+
+        Yields:
+            Text chunks as they are generated.
+        """
+        try:
+            completion = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=settings.GENERATION_MODEL,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                stream=True,
+            )
+
+            for chunk in completion:
+                content = chunk.choices[0].delta.content
+                if content:
+                    yield content
+
+        except Exception as exception:
             message = str(exception)
             lower = message.lower()
 

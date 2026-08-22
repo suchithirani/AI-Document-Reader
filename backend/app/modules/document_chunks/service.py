@@ -71,7 +71,7 @@ class DocumentChunkService:
 
     async def get_chunks(
         self,
-        document_id: str,
+        document_id: str | list[str],
     ):
         return await self.repository.get_document_chunks(
             document_id
