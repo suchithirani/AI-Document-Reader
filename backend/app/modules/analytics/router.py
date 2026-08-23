@@ -21,6 +21,7 @@ analytics_router = APIRouter(
     "/dashboard",
 )
 async def dashboard(
+    days: int = 7,
     current_user: User = Depends(
         get_current_user,
     ),
@@ -29,7 +30,10 @@ async def dashboard(
     ),
 ):
 
-    result = await service.dashboard()
+    result = await service.dashboard(
+        days=days,
+        owner_id=current_user.id
+    )
 
     return success_response(
         message="Analytics fetched successfully.",

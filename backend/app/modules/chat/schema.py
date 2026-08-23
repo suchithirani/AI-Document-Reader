@@ -5,8 +5,11 @@ from app.common.base_schema import BaseSchema
 
 class CreateChatSessionRequest(BaseSchema):
 
-    document_ids: list[str] = Field(
-        min_length=1,
+    document_ids: list[str] | None = Field(
+        default=None,
+    )
+    collection_id: str | None = Field(
+        default=None,
     )
 
 
@@ -37,6 +40,10 @@ class SendMessageRequest(BaseModel):
 
     question: str = Field(
         min_length=1,
+    )
+    detail_level: str = Field(
+        default="standard",
+        description="Complexity level: 'eli5', 'standard', or 'expert'"
     )
 
 

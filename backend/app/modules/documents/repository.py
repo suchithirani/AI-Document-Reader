@@ -59,6 +59,7 @@ class DocumentRepository(BaseRepository):
             filters={
                 "owner_id": owner_id,
                 "deleted_at": None,
+                "is_latest": {"$ne": False},
             },
             skip=skip,
             limit=limit,
@@ -180,5 +181,55 @@ class DocumentRepository(BaseRepository):
             {
                 "owner_id": owner_id,
                 "deleted_at": None,
+                "is_latest": {"$ne": False},
             }
+        )
+
+    async def get_latest_version_by_name(
+        self,
+        owner_id: str,
+        original_filename: str,
+    ) -> Document | None:
+        document = await self.collection.find_one(
+            {
+                "owner_id": owner_id,
+                "original_filename": original_filename,
+                "deleted_at": None,
+                "is_latest": {"$ne": False},
+            }
+        )
+        if document is None:
+            return None
+        return Document.model_validate(
+            self._serialize_document(document)
+        )
+
+    async def get_versions_by_group(
+        self,
+        version_group_id: str,
+    ) -> list[Document]:
+        documents = await self.get_many(
+            filters={
+                "version_group_id": version_group_id,
+                "deleted_at": None,
+            },
+            sort=[("version", -1)],
+        )
+        return [
+            Document.model_validate(
+                self._serialize_document(d)
+            )
+            for d in documents
+        ]
+
+    async def demote_previous_versions(
+        self,
+        version_group_id: str,
+    ) -> None:
+        await self.collection.update_many(
+            {
+                "version_group_id": version_group_id,
+                "deleted_at": None,
+            },
+            {"$set": {"is_latest": False}}
         )

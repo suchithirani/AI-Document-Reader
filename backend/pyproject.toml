@@ -2,7 +2,7 @@
 name = "ai-document-reader"
 version = "0.1.0"
 description = "AI-powered document intelligence platform"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 
 dependencies = [
     "fastapi",
@@ -26,6 +26,7 @@ dependencies = [
     "redis[hiredis]>=8.1.0",
     "celery>=5.6.3",
     "aiosmtplib>=5.1.2",
+    "pytest",
     "qdrant-client>=1.19.0",
 ]
 

@@ -28,13 +28,15 @@ from app.services.ai.vision.ollama import (
 class AIService:
 
     def __init__(self) -> None:
-
         if settings.GENERATION_PROVIDER == "groq":
             self.provider = GroqAIService()
+            self.fallback_providers = [GeminiAIService(), OllamaAIService()]
         elif settings.GENERATION_PROVIDER == "ollama":
             self.provider = OllamaAIService()
+            self.fallback_providers = [GeminiAIService(), GroqAIService()]
         else:
             self.provider = GeminiAIService()
+            self.fallback_providers = [GroqAIService(), OllamaAIService()]
 
         vision_providers = []
         if settings.VISION_PROVIDER == "ollama":
@@ -53,23 +55,67 @@ class AIService:
         prompt: str,
         model: str | None = None,
     ):
-        import inspect
-        sig = inspect.signature(self.provider.answer_question)
-        if "model" in sig.parameters:
-            return await self.provider.answer_question(
-                prompt,
-                model=model,
-            )
-        return await self.provider.answer_question(
-            prompt,
-        )
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        providers = [self.provider] + self.fallback_providers
+        last_exc = None
+        
+        for prov in providers:
+            try:
+                import inspect
+                sig = inspect.signature(prov.answer_question)
+                if "model" in sig.parameters:
+                    return await prov.answer_question(
+                        prompt,
+                        model=model,
+                    )
+                return await prov.answer_question(
+                    prompt,
+                )
+            except Exception as e:
+                logger.warning(
+                    "AIService provider %s failed: %s. Trying next provider...",
+                    prov.__class__.__name__,
+                    e
+                )
+                last_exc = e
+                continue
+                
+        raise last_exc
 
     async def answer_question_stream(
         self,
         prompt: str,
     ):
-        async for chunk in self.provider.answer_question_stream(prompt):
-            yield chunk
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        providers = [self.provider] + self.fallback_providers
+        last_exc = None
+        
+        for prov in providers:
+            try:
+                gen = prov.answer_question_stream(prompt)
+                # Fetch first chunk to verify it initializes successfully (catches 429)
+                first_chunk = await gen.__anext__()
+                yield first_chunk
+                
+                async for chunk in gen:
+                    yield chunk
+                return
+            except StopAsyncIteration:
+                return
+            except Exception as e:
+                logger.warning(
+                    "AIService stream provider %s failed: %s. Trying fallback stream...",
+                    prov.__class__.__name__,
+                    e
+                )
+                last_exc = e
+                continue
+                
+        raise last_exc
 
     async def analyze_images(
         self,

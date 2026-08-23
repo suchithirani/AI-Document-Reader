@@ -1,0 +1,92 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: doc_redis
+    ports:
+      - "6380:6379"
+    restart: always
+    dns:
+      - 8.8.8.8
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: doc_qdrant
+    ports:
+      - "6335:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+  api:
+    build: .
+    container_name: doc_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_HOST=redis
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+    depends_on:
+      - redis
+      - qdrant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    dns:
+      - 8.8.8.8
+    restart: always
+
+  celery_worker:
+    build: .
+    container_name: doc_celery_worker
+    # Use watchfiles for hot reloading Celery tasks automatically on file change
+    command: sh -c "pip install watchfiles && watchfiles 'celery -A app.core.celery worker --loglevel=info' app"
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      - redis
+      - qdrant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    dns:
+      - 8.8.8.8
+    restart: always
+
+  celery_beat:
+    build: .
+    container_name: doc_celery_beat
+    command: celery -A app.core.celery beat --loglevel=info
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - CELERY_BEAT_SCHEDULE=/tmp/celerybeat-schedule
+    depends_on:
+      - redis
+      - qdrant
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    dns:
+      - 8.8.8.8
+    user: root
+    restart: always
+
+volumes:
+  qdrant_data:

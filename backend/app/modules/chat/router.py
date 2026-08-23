@@ -25,10 +25,14 @@ async def create_session(
     current_user: User = Depends(get_current_user),
     service: ChatService = Depends(get_chat_service),
 ):
+    from app.common.exceptions.auth import BadRequestException
+    if not body.document_ids and not body.collection_id:
+        raise BadRequestException("Either document_ids or collection_id must be provided.")
 
     result = await service.create_session(
         owner_id=current_user.id,
         document_ids=body.document_ids,
+        collection_id=body.collection_id,
     )
 
     return success_response(
@@ -102,6 +106,7 @@ async def send_message(
         owner_id=current_user.id,
         session_id=session_id,
         question=body.question,
+        detail_level=body.detail_level,
     )
     
     return success_response(
@@ -125,6 +130,7 @@ async def send_message_stream(
                 owner_id=current_user.id,
                 session_id=session_id,
                 question=body.question,
+                detail_level=body.detail_level,
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
         except Exception as e:

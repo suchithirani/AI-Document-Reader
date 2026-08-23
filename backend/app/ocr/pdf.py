@@ -2,6 +2,8 @@ import fitz
 import re
 import numpy as np
 import logging
+from PIL import Image, ImageOps
+import pytesseract
 from app.common.exceptions.document import (
     OCRException,
 )
@@ -11,18 +13,7 @@ logger = logging.getLogger(__name__)
 class PDFOCR:
 
     def __init__(self):
-        self._easy_ocr = None
-        import threading
-        self._easy_ocr_lock = threading.Lock()
-
-    def _get_easy_ocr(self):
-        with self._easy_ocr_lock:
-            if self._easy_ocr is None:
-                logger.info("Initializing EasyOCR (this may take a moment on first load)...")
-                import easyocr
-                # We support English. (Numbers and english letters will be extracted perfectly)
-                self._easy_ocr = easyocr.Reader(['en'], gpu=False)
-            return self._easy_ocr
+        pass
 
     def _table_to_markdown(self, table_data: list[list[str]]) -> str:
         if not table_data or not table_data[0]:
@@ -141,43 +132,30 @@ class PDFOCR:
 
             # 3. Hybrid Fallback: Scanned PDF / Image Detection
             if len(combined_text) < 20:
-                logger.info("Page %d of %s yielded little/no digital text. Falling back to EasyOCR.", page_number, file_path)
-                combined_text = self._extract_with_easyocr(page)
+                logger.info("Page %d of %s yielded little/no digital text. Falling back to OCR.", page_number, file_path)
+                combined_text = self._extract_with_ocr(page)
 
             return combined_text
         finally:
             document.close()
 
-    def _extract_with_easyocr(self, page) -> str:
+    def _extract_with_ocr(self, page) -> str:
         """
-        Renders the PDF page to an image and uses EasyOCR's vision model to read the text.
+        Renders the PDF page to an image and uses Tesseract OCR to read the text.
         """
-        # Render at 2x zoom for better OCR accuracy (around 150-200 DPI depending on original size)
         zoom = 2.0
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat, alpha=False)
 
-        # Convert to numpy array (H, W, C) for EasyOCR
-        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-        
-        if pix.n == 4:
-            import cv2
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img_l = ImageOps.autocontrast(img.convert("L"))
 
-        ocr = self._get_easy_ocr()
-        # EasyOCR returns a list of tuples: (bounding_box, text, confidence)
-        result = ocr.readtext(img)
+        text = pytesseract.image_to_string(
+            img_l,
+            config="--oem 3 --psm 6",
+        )
 
-        if not result:
-            return ""
-
-        # Extract text blocks
-        lines = []
-        for line in result:
-            text = line[1]
-            lines.append(text)
-
-        return self._clean_text("\n\n".join(lines))
+        return self._clean_text(text)
 
     def _clean_text(
         self,

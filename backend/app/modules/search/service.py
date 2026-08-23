@@ -1,10 +1,8 @@
 import asyncio
 import json
 import logging
-from app.common.constants import QueryIntent
 from collections import defaultdict
 import re
-from app.common.exceptions.auth import BaseAppException
 from app.common.exceptions.search import SearchException
 from app.modules.document_chunks.service import DocumentChunkService
 from app.modules.document_images.service import DocumentImageService
@@ -29,6 +27,8 @@ from app.services.vector_search.service import VectorSearchService
 from app.services.vision.service import VisionService
 from app.services.query_analysis.analyzer import QueryAnalyzer
 from app.common.constants import QueryIntent
+from app.services.retrieval.service import RetrievalService
+from app.common.exceptions.auth import BaseAppException
 
 BATCH_EXTRACTION_PROMPT = """You are a precise data extraction AI. Extract the following fields from the provided document texts.
 
@@ -70,13 +70,10 @@ class SearchService:
     BROAD_RETRIEVAL_TOP_K = 50
     VISUAL_PAGE_LIMIT = 5
     MULTI_PAGE_MIN_RESULTS = 10
-    MAX_FINAL_CHUNKS = 8
-    MAX_CHUNKS_PER_PAGE = 2
-    PAGE_NEIGHBOR_WINDOW = 1
-    MIN_RELATED_SCORE_RATIO = 0.70
+
 
     def __init__(self, db):
-
+        self.db = db
         self.chunk_service = DocumentChunkService(db)
 
         self.document_repository = DocumentRepository(db)
@@ -115,6 +112,12 @@ class SearchService:
             DocumentImageService(db)
         )
 
+        self.retrieval_service = RetrievalService(
+            vector_service=self.vector_service,
+            bm25_service=self.bm25_service,
+            hybrid_search_service=self.hybrid_search_service,
+        )
+
         self.vision_service = VisionService(
             ai_service=self.ai_service,
             document_image_service=(
@@ -135,32 +138,6 @@ class SearchService:
         )
 
         self.query_analyzer = QueryAnalyzer()
-
-
-    def _filter_chunks_by_pages(
-        self,
-        chunks,
-        document_ids: list[str],
-        pages: list[int],
-    ):
-        """
-        Restrict content retrieval to explicitly requested pages.
-        """
-
-        if not pages:
-            return chunks
-
-        requested_pages = set(pages)
-        requested_documents = set(document_ids)
-
-        return [
-            chunk
-            for chunk in chunks
-            if (
-                chunk.document_id in requested_documents
-                and chunk.page_number in requested_pages
-            )
-        ]
 
     def _get_relevant_pages(
         self,
@@ -218,89 +195,6 @@ class SearchService:
 
         return relevant_pages
 
-    async def _search_global(
-        self,
-        question: str,
-        query_embedding: list[float],
-        chunks: list,
-        top_k: int,
-        owner_id: str,
-        document_ids: list[str] = None,
-    ) -> list[dict]:
-
-        keyword_results = self.bm25_service.search(
-            question=question,
-            chunks=chunks,
-            top_k=top_k,
-        )
-
-        vector_results = self.vector_service.search(
-            query_embedding=query_embedding,
-            owner_id=owner_id,
-            document_ids=document_ids,
-            top_k=top_k,
-        )
-
-        return self.hybrid_search_service.merge(
-            vector_results=vector_results,
-            keyword_results=keyword_results,
-            top_k=top_k,
-            question=question,
-        )
-
-    async def _search_per_document(
-        self,
-        question: str,
-        query_embedding: list[float],
-        chunks: list,
-        top_k: int,
-        owner_id: str,
-    ) -> list[dict]:
-
-        grouped_chunks = defaultdict(list)
-
-        for chunk in chunks:
-            grouped_chunks[
-                chunk.document_id
-            ].append(chunk)
-
-        results = []
-
-        candidate_k = max(
-            top_k * 2,
-            10,
-        )
-
-        for document_id, document_chunks in grouped_chunks.items():
-
-            keyword_results = (
-                self.bm25_service.search(
-                    question=question,
-                    chunks=document_chunks,
-                    top_k=candidate_k,
-                )
-            )
-
-            vector_results = (
-                self.vector_service.search(
-                    query_embedding=query_embedding,
-                    owner_id=owner_id,
-                    document_ids=[document_id],
-                    top_k=candidate_k,
-                )
-            )
-
-            results.extend(
-                self.hybrid_search_service.merge(
-                    vector_results=vector_results,
-                    keyword_results=keyword_results,
-                    top_k=top_k,
-                    question=question,
-                )
-            )
-
-        return results
-
     async def _get_document_metadata(
         self,
         document_ids: list[str],
@@ -334,194 +228,6 @@ class SearchService:
             )
 
         return documents
-
-    def _select_relevant_chunks(
-        self,
-        results,
-        question: str,
-        is_broad_question: bool,
-    ):
-        """
-        Reduce noisy retrieval results while preserving
-        multi-page continuity.
-
-        Strongly ranked pages are kept first.
-        Nearby pages are allowed when they are part of
-        the same document section.
-        """
-
-        if not results:
-            return []
-
-        # ---------------------------------------------------------
-        # Sort by retrieval score
-        # ---------------------------------------------------------
-
-        ranked = sorted(
-            results,
-            key=lambda item: float(
-                item.get("score", 0.0)
-            ),
-            reverse=True,
-        )
-
-        # Narrow factual questions:
-        # don't introduce extra pages unnecessarily.
-        if not is_broad_question:
-
-            selected = []
-            seen = set()
-
-            for result in ranked:
-
-                chunk = result["chunk"]
-
-                key = (
-                    chunk.document_id,
-                    chunk.page_number,
-                    chunk.chunk_index,
-                )
-
-                if key in seen:
-                    continue
-
-                seen.add(key)
-                selected.append(result)
-
-                if len(selected) >= self.MAX_FINAL_CHUNKS:
-                    break
-
-            return selected
-
-        # ---------------------------------------------------------
-        # Broad / explanatory questions
-        # ---------------------------------------------------------
-
-        strongest_score = float(
-            ranked[0].get("score", 0.0)
-        )
-
-        if strongest_score <= 0:
-            return ranked[:self.MAX_FINAL_CHUNKS]
-
-        minimum_score = (
-            strongest_score
-            * self.MIN_RELATED_SCORE_RATIO
-        )
-
-        # First collect strong pages.
-        strong_pages = set()
-
-        for result in ranked:
-
-            score = float(
-                result.get("score", 0.0)
-            )
-
-            if score < minimum_score:
-                continue
-
-            chunk = result["chunk"]
-
-            strong_pages.add(
-                (
-                    chunk.document_id,
-                    chunk.page_number,
-                )
-            )
-
-        # ---------------------------------------------------------
-        # Add neighboring pages.
-        #
-        # This is important for things like:
-        # Page 38 -> Page 39
-        #
-        # where one page starts a section and the next
-        # page contains its diagram/details.
-        # ---------------------------------------------------------
-
-        candidate_pages = set(
-            strong_pages
-        )
-
-        for document_id, page_number in strong_pages:
-
-            for offset in range(
-                -self.PAGE_NEIGHBOR_WINDOW,
-                self.PAGE_NEIGHBOR_WINDOW + 1,
-            ):
-
-                if offset == 0:
-                    continue
-
-                candidate_pages.add(
-                    (
-                        document_id,
-                        page_number + offset,
-                    )
-                )
-
-        # ---------------------------------------------------------
-        # Select chunks from relevant pages
-        # ---------------------------------------------------------
-
-        selected = []
-        page_counts = {}
-        seen = set()
-
-        for result in ranked:
-
-            chunk = result["chunk"]
-
-            page_key = (
-                chunk.document_id,
-                chunk.page_number,
-            )
-
-            chunk_key = (
-                chunk.document_id,
-                chunk.page_number,
-                chunk.chunk_index,
-            )
-
-            if chunk_key in seen:
-                continue
-
-            if page_key not in candidate_pages:
-                continue
-
-            count = page_counts.get(
-                page_key,
-                0,
-            )
-
-            if count >= self.MAX_CHUNKS_PER_PAGE:
-                continue
-
-            selected.append(result)
-            seen.add(chunk_key)
-
-            page_counts[page_key] = count + 1
-
-            if len(selected) >= self.MAX_FINAL_CHUNKS:
-                break
-
-        # ---------------------------------------------------------
-        # Keep results ordered by document/page/chunk
-        # rather than retrieval score.
-        #
-        # This makes multi-page context coherent.
-        # ---------------------------------------------------------
-
-        selected.sort(
-            key=lambda item: (
-                item["chunk"].document_id,
-                item["chunk"].page_number,
-                item["chunk"].chunk_index,
-            )
-        )
-
-        return selected
 
     async def _retrieve_images(
         self,
@@ -718,48 +424,6 @@ Question:
 
             return ["GLOBAL"]
 
-    async def _filter_chunks_by_pages(
-        self,
-        chunks: list,
-        document_ids: list[str],
-        pages: list[int],
-    ) -> list:
-
-        return [
-            chunk
-            for chunk in chunks
-            if (
-                chunk.document_id in document_ids
-                and chunk.page_number in pages
-            )
-        ]
-
-    def _remove_duplicate_results(
-        self,
-        results: list[dict],
-    ) -> list[dict]:
-
-        unique_results = []
-        seen = set()
-
-        for result in results:
-
-            chunk = result["chunk"]
-
-            key = (
-                chunk.document_id,
-                chunk.page_number,
-                chunk.chunk_index,
-            )
-
-            if key in seen:
-                continue
-
-            seen.add(key)
-            unique_results.append(result)
-
-        return unique_results
-
     def _build_context(
         self,
         results: list[dict],
@@ -834,6 +498,258 @@ Question:
 
         return context
 
+    async def _retrieve_context(
+        self,
+        question: str,
+        document_ids: list[str],
+        owner_id: str,
+        query_analysis,
+    ) -> dict:
+        """
+        Shared retrieval pipeline used by both search() and search_stream().
+
+        Responsible only for:
+        - retrieval scope determination
+        - embedding generation
+        - chunk loading
+        - metadata filtering
+        - global/per-document retrieval
+        - page filtering
+        - deduplication
+        - relevance selection
+
+        Does not handle:
+        - vision
+        - prompt building
+        - LLM calls
+        - citations
+        - streaming
+        """
+
+        is_broad_question = query_analysis.is_broad
+        explicit_pages = query_analysis.page_numbers
+
+        is_page_specific = (
+            bool(explicit_pages)
+            and query_analysis.scope == "page"
+            and not is_broad_question
+        )
+
+        # ---------------------------------------------------------
+        # 1. Determine retrieval scopes
+        # ---------------------------------------------------------
+
+        retrieval_scopes = await self._determine_retrieval_scopes(
+            question=question,
+            document_count=len(document_ids),
+        )
+
+        if (
+            is_broad_question
+            and len(document_ids) > 1
+            and "PER_DOCUMENT" not in retrieval_scopes
+        ):
+            retrieval_scopes.append("PER_DOCUMENT")
+
+        # ---------------------------------------------------------
+        # 2. Determine retrieval depth
+        # ---------------------------------------------------------
+
+        retrieval_top_k = self.query_analyzer._get_retrieval_top_k(
+            intent=query_analysis.intent,
+            is_broad=query_analysis.is_broad,
+            scope=query_analysis.scope,
+        )
+
+        # ---------------------------------------------------------
+        # 3. Load document metadata
+        # ---------------------------------------------------------
+
+        documents = await self._get_document_metadata(
+            document_ids
+        )
+
+        metadata_context = ""
+        metadata_sources = []
+
+        if "METADATA" in retrieval_scopes:
+
+            metadata_context = "\n".join(
+                (
+                    f"Document: {document['document_name']}\n"
+                    f"Page count: {document['page_count']}\n"
+                    f"File size: {document['file_size']}\n"
+                    f"File type: {document['mime_type']}\n"
+                    f"Status: {document['status']}\n"
+                )
+                for document in documents
+            )
+
+            metadata_sources = [
+                {
+                    **document,
+                    "source_type": "metadata",
+                }
+                for document in documents
+            ]
+
+        # ---------------------------------------------------------
+        # 4. Embedding
+        # ---------------------------------------------------------
+
+        query_embedding = None
+
+        if (
+            "GLOBAL" in retrieval_scopes
+            or "PER_DOCUMENT" in retrieval_scopes
+        ):
+
+            query_embedding = await self.embedding_cache.get(
+                question
+            )
+
+            if query_embedding is None:
+
+                query_embedding = (
+                    await self.embedding_service.create_embedding(
+                        question
+                    )
+                )
+
+                await self.embedding_cache.set(
+                    question,
+                    query_embedding,
+                )
+
+        # ---------------------------------------------------------
+        # 5. Load chunks
+        # ---------------------------------------------------------
+
+        chunks = []
+
+        if (
+            "GLOBAL" in retrieval_scopes
+            or "PER_DOCUMENT" in retrieval_scopes
+        ):
+            chunks = await self.chunk_service.get_chunks(
+                document_ids
+            )
+
+        # ---------------------------------------------------------
+        # 6. Metadata filtering
+        # ---------------------------------------------------------
+
+        filtered_chunks = []
+
+        if (
+            "GLOBAL" in retrieval_scopes
+            or "PER_DOCUMENT" in retrieval_scopes
+        ):
+
+            filtered_chunks = (
+                self.metadata_filter_service.filter(
+                    question=question,
+                    chunks=chunks,
+                )
+            )
+
+            if is_page_specific:
+
+                filtered_chunks = (
+                    self.retrieval_service.filter_chunks_by_pages(
+                        chunks=filtered_chunks,
+                        document_ids=document_ids,
+                        pages=explicit_pages,
+                    )
+                )
+
+        # ---------------------------------------------------------
+        # 7. Retrieval
+        # ---------------------------------------------------------
+
+        results = []
+
+        if "GLOBAL" in retrieval_scopes:
+
+            results.extend(
+                await self.retrieval_service.search_global(
+                    question=question,
+                    query_embedding=query_embedding,
+                    chunks=filtered_chunks,
+                    top_k=retrieval_top_k,
+                    owner_id=owner_id,
+                    document_ids=document_ids,
+                )
+            )
+
+        if "PER_DOCUMENT" in retrieval_scopes:
+
+            results.extend(
+                await self.retrieval_service.search_per_document(
+                    question=question,
+                    query_embedding=query_embedding,
+                    chunks=filtered_chunks,
+                    top_k=retrieval_top_k,
+                    owner_id=owner_id,
+                )
+            )
+
+        # ---------------------------------------------------------
+        # 8. Remove duplicates
+        # ---------------------------------------------------------
+
+        results = (
+            self.retrieval_service.remove_duplicate_results(
+                results
+            )
+        )
+
+        # ---------------------------------------------------------
+        # 9. Preserve explicitly requested pages
+        # ---------------------------------------------------------
+
+        if is_page_specific:
+
+            results = (
+                self.retrieval_service
+                .include_page_chunks(
+                    results=results,
+                    chunks=chunks,
+                    document_ids=document_ids,
+                    pages=explicit_pages,
+                )
+            )
+
+        # ---------------------------------------------------------
+        # 10. Sort results
+        # ---------------------------------------------------------
+
+        results = self.retrieval_service.sort_results(results)
+
+        # ---------------------------------------------------------
+        # 11. Final relevance selection
+        # ---------------------------------------------------------
+
+        results = (
+            self.retrieval_service.select_relevant_chunks(
+                results=results,
+                is_broad_question=is_broad_question,
+            )
+        )
+
+        return {
+            "results": results,
+            "chunks": chunks,
+            "documents": documents,
+            "metadata_context": metadata_context,
+            "metadata_sources": metadata_sources,
+            "retrieval_scopes": retrieval_scopes,
+            "explicit_pages": explicit_pages,
+            "is_broad_question": is_broad_question,
+            "requires_images": query_analysis.requires_visual,
+            "is_page_specific": is_page_specific,
+        }
+
     async def search(
         self,
         owner_id: str,
@@ -843,57 +759,25 @@ Question:
         history: list | None = None,
         summary: str | None = None,
         top_k: int = 5,
+        detail_level: str = "standard",
     ) -> dict:
 
         try:
-
             timer = PerformanceLogger()
 
-            query_analysis = self.query_analyzer.analyze(
-                question
-            )
+            # Load user memories (cross-session memory summaries)
+            from app.common.constants import CollectionName
+            memories_col = self.db[CollectionName.USER_MEMORIES.value]
+            memories_doc = await memories_col.find_one({"owner_id": owner_id})
+            memories = memories_doc.get("memories", []) if memories_doc else []
 
-            is_broad_question = query_analysis.is_broad
-            requires_images = query_analysis.requires_visual
-            explicit_pages = query_analysis.page_numbers
+            # ============================================================
+            # 1. Query Analysis
+            # ============================================================
 
-            is_page_specific = (
-                bool(explicit_pages)
-                and query_analysis.scope == "page"
-                and not is_broad_question
-            )
+            query_analysis = self.query_analyzer.analyze(question)
 
             intent_str = str(query_analysis.intent).lower()
-            if len(document_ids) > 1 and intent_str in ("comparison", "summary", "general"):
-                logger.info("Multi-document comparison/synthesis request. Redirecting to Isolation Extraction Pipeline.")
-                md_table, metadata_sources, content_sources = await self._run_extraction_pipeline(
-                    document_ids=document_ids,
-                    question=question,
-                    owner_id=owner_id
-                )
-                all_sources = {
-                    "metadata": metadata_sources,
-                    "content": content_sources
-                }
-                
-                context = f"=== CONSOLIDATED DOCUMENT RECORDS ===\n\n{md_table}\n\n"
-                prompt = self.prompt_builder.build(
-                    history=history or [],
-                    summary=summary,
-                    context=context,
-                    question=question,
-                    intent=query_analysis.intent,
-                    doc_types=["invoice"]
-                )
-                
-                response = await self.ai_service.answer_question(prompt=prompt)
-                answer = response["answer"]
-                answer = self.citation_validator.validate(answer=answer, sources=content_sources)
-                
-                return {
-                    "answer": answer,
-                    "sources": all_sources
-                }
 
             logger.info(
                 "Query analysis: intent=%s scope=%s broad=%s visual=%s pages=%s",
@@ -904,442 +788,188 @@ Question:
                 query_analysis.page_numbers,
             )
 
-            timer.start(
-                "Retrieval Scope"
+            # ============================================================
+            # 2. Multi-document structured extraction (for invoices)
+            # ============================================================
+
+            invoice_keywords = {
+                "invoice", "bill", "billing", "gst", "tax", "subtotal", 
+                "grand total", "supplier", "buyer", "vendor", "rate", 
+                "amount", "price", "payment", "bank details", "cgst", "sgst"
+            }
+            q_lower = question.lower()
+            is_invoice_comparison = (
+                len(document_ids) > 1
+                and intent_str == "comparison"
+                and any(k in q_lower for k in invoice_keywords)
             )
 
-            retrieval_scopes = (
-                await self._determine_retrieval_scopes(
+            if is_invoice_comparison:
+                logger.info(
+                    "Multi-document invoice comparison request. "
+                    "Redirecting to Isolation Extraction Pipeline."
+                )
+
+                (
+                    md_table,
+                    metadata_sources,
+                    content_sources,
+                ) = await self._run_extraction_pipeline(
+                    document_ids=document_ids,
                     question=question,
-                    document_count=len(
-                        document_ids
-                    ),
-                )
-            )
-
-            timer.stop(
-                "Retrieval Scope"
-            )
-
-            if (
-                is_broad_question
-                and len(document_ids) > 1
-                and "PER_DOCUMENT"
-                not in retrieval_scopes
-            ):
-                retrieval_scopes.append(
-                    "PER_DOCUMENT"
+                    owner_id=owner_id,
                 )
 
-            retrieval_top_k = self.query_analyzer._get_retrieval_top_k(
-                intent=query_analysis.intent,
-                is_broad=query_analysis.is_broad,
-                scope=query_analysis.scope,
-            )
-
-            metadata_context = ""
-            metadata_sources = []
-            documents = []
-            chunks = []
-            results = []
-            vision_results = []
-
-            documents = (
-                await self._get_document_metadata(
-                    document_ids
-                )
-            )
-
-            if "METADATA" in retrieval_scopes:
-
-                metadata_context = "\n".join(
-                    (
-                        f"Document: "
-                        f"{document['document_name']}\n"
-                        f"Page count: "
-                        f"{document['page_count']}\n"
-                        f"File size: "
-                        f"{document['file_size']}\n"
-                        f"File type: "
-                        f"{document['mime_type']}\n"
-                        f"Status: "
-                        f"{document['status']}\n"
-                    )
-                    for document in documents
-                )
-
-                metadata_sources = [
-                    {
-                        **document,
-                        "source_type": "metadata",
-                    }
-                    for document in documents
-                ]
-
-            query_embedding = None
-
-            if (
-                "GLOBAL" in retrieval_scopes
-                or "PER_DOCUMENT"
-                in retrieval_scopes
-            ):
-
-                timer.start("Embedding")
-
-                query_embedding = (
-                    await self.embedding_cache.get(
-                        question
-                    )
-                )
-
-                if query_embedding is None:
-
-                    query_embedding = (
-                        await self.embedding_service
-                        .create_embedding(
-                            question
-                        )
-                    )
-
-                    await self.embedding_cache.set(
-                        question,
-                        query_embedding,
-                    )
-
-                timer.stop("Embedding")
-
-                chunks = (
-                    await self.chunk_service
-                    .get_chunks(
-                        document_ids
-                    )
-                )
-                if explicit_pages:
-
-                    print("\n========== ALL DATABASE CHUNKS FOR REQUESTED PAGES ==========")
-
-                    for page in explicit_pages:
-
-                        page_chunks = [
-                            chunk
-                            for chunk in chunks
-                            if (
-                                chunk.document_id in document_ids
-                                and chunk.page_number == page
-                            )
-                        ]
-
-                        page_chunks.sort(
-                            key=lambda chunk: chunk.chunk_index
-                        )
-
-                        print(
-                            f"Page {page}: "
-                            f"{len(page_chunks)} chunks"
-                        )
-
-                        for chunk in page_chunks:
-                            print(
-                                f"  chunk_index={chunk.chunk_index} "
-                                f"tokens={getattr(chunk, 'token_count', '?')} "
-                                f"text={chunk.text[:100]!r}"
-                            )
-
-                    print(
-                        "============================================================\n"
-                    )
-                if explicit_pages:
-                    print("\n========== REQUESTED PAGE DEBUG ==========")
-
-                    for page in explicit_pages:
-                        matching = [
-                            chunk
-                            for chunk in chunks
-                            if (
-                                chunk.document_id in document_ids
-                                and chunk.page_number == page
-                            )
-                        ]
-
-                        print(
-                            f"Page {page}: "
-                            f"{len(matching)} chunks"
-                        )
-
-                        print(
-                            "Chunk indexes:",
-                            [
-                                chunk.chunk_index
-                                for chunk in matching
-                            ],
-                        )
-
-                    print("==========================================\n")
-
-            filtered_chunks = []
-            if "GLOBAL" in retrieval_scopes or "PER_DOCUMENT" in retrieval_scopes:
-                timer.start(
-                    "Metadata Filter"
-                )
-
-                filtered_chunks = (
-                    self.metadata_filter_service.filter(
-                        question=question,
-                        chunks=chunks,
-                    )
-                )
-
-                if is_page_specific:
-                    filtered_chunks = self._filter_chunks_by_pages(
-                        chunks=filtered_chunks,
-                        document_ids=document_ids,
-                        pages=explicit_pages,
-                    )
-
-                timer.stop(
-                    "Metadata Filter"
-                )
-
-            if "GLOBAL" in retrieval_scopes:
-
-                timer.start(
-                    "Global Retrieval"
-                )
-                
-                results.extend(
-                    await self._search_global(
-                        question=question,
-                        query_embedding=(
-                            query_embedding
-                        ),
-                        chunks=filtered_chunks,
-                        top_k=retrieval_top_k,
-                        owner_id=owner_id,
-                        document_ids=document_ids,
-                    )
-                )
-
-                timer.stop(
-                    "Global Retrieval"
-                )
-
-            if "PER_DOCUMENT" in retrieval_scopes:
-
-                timer.start(
-                    "Per Document Retrieval"
-                )
-
-                results.extend(
-                    await self._search_per_document(
-                        question=question,
-                        query_embedding=(
-                            query_embedding
-                        ),
-                        chunks=filtered_chunks,
-                        top_k=retrieval_top_k,
-                        owner_id=owner_id,
-                    )
-                )
-
-                timer.stop(
-                    "Per Document Retrieval"
-                )
-
-            results = (
-                self._remove_duplicate_results(
-                    results
-                )
-            )
-
-            if is_page_specific:
-
-                page_chunks = [
-                    chunk
-                    for chunk in chunks
-                    if (
-                        chunk.document_id
-                        in document_ids
-                        and chunk.page_number
-                        in explicit_pages
-                    )
-                ]
-
-                existing_keys = {
-                    (
-                        result["chunk"].document_id,
-                        result["chunk"].page_number,
-                        result["chunk"].chunk_index,
-                    )
-                    for result in results
+                all_sources = {
+                    "metadata": metadata_sources,
+                    "content": content_sources,
                 }
 
-                for chunk in page_chunks:
+                context = (
+                    "=== CONSOLIDATED DOCUMENT RECORDS ===\n\n"
+                    f"{md_table}\n\n"
+                )
 
-                    key = (
-                        chunk.document_id,
-                        chunk.page_number,
-                        chunk.chunk_index,
-                    )
+                prompt = self.prompt_builder.build(
+                    history=history or [],
+                    summary=summary,
+                    context=context,
+                    question=question,
+                    intent=query_analysis.intent,
+                    doc_types=["invoice"],
+                    detail_level=detail_level,
+                    memories=memories,
+                )
 
-                    if key in existing_keys:
-                        continue
+                response = await self.ai_service.answer_question(
+                    prompt=prompt,
+                )
 
-                    results.append(
-                        {
-                            "chunk": chunk,
-                            "score": 0.0,
-                        }
-                    )
+                answer = response["answer"]
+
+                answer = self.citation_validator.validate(
+                    answer=answer,
+                    sources=content_sources,
+                )
+
+                return {
+                    "answer": answer,
+                    "sources": all_sources,
+                }
+
+            # ============================================================
+            # 3. Shared Retrieval Pipeline
+            # ============================================================
+
+            timer.start("Retrieval")
+
+            retrieval_data = await self._retrieve_context(
+                question=question,
+                document_ids=document_ids,
+                owner_id=owner_id,
+                query_analysis=query_analysis,
+            )
+
+            timer.stop("Retrieval")
+
+            results = retrieval_data["results"]
+            chunks = retrieval_data["chunks"]
+            documents = retrieval_data["documents"]
+            metadata_context = retrieval_data["metadata_context"]
+            metadata_sources = retrieval_data["metadata_sources"]
+            retrieval_scopes = retrieval_data["retrieval_scopes"]
+            explicit_pages = retrieval_data["explicit_pages"]
+            is_broad_question = retrieval_data["is_broad_question"]
+            requires_images = retrieval_data["requires_images"]
+
+            vision_results = []
+
+            # ============================================================
+            # 4. Vision Retrieval
+            # ============================================================
 
             if requires_images:
 
-                image_records = (
-                    await self._retrieve_images(
-                        document_ids=document_ids,
+                image_records = await self._retrieve_images(
+                    document_ids=document_ids,
+                    results=results,
+                    explicit_pages=explicit_pages,
+                    requires_images=requires_images,
+                )
+
+                vision_results = await self._run_vision(
+                    images=image_records,
+                    question=question,
+                )
+
+            # ============================================================
+            # 5. Multi-document synthesis handling
+            # ============================================================
+
+            if (
+                intent_str in (
+                    "summary",
+                    "comparison",
+                    "general",
+                )
+                and len(document_ids) > 1
+            ):
+                logger.info(
+                    "Multi-document synthesis triggered for %d documents "
+                    "(Intent: %s).",
+                    len(document_ids),
+                    intent_str,
+                )
+
+                results = (
+                    self.retrieval_service
+                    .ensure_multi_document_coverage(
                         results=results,
-                        explicit_pages=explicit_pages,
-                        requires_images=requires_images,
+                        chunks=chunks,
+                        document_ids=document_ids,
+                        chunks_per_document=3,
                     )
                 )
 
-                vision_results = (
-                    await self._run_vision(
-                        images=image_records,
-                        question=question,
-                    )
+            # ============================================================
+            # 6. TOC handling
+            # ============================================================
+
+            if intent_str == "toc" and results:
+
+                logger.info(
+                    "TOC intent matched. "
+                    "Retrieving sequential TOC pages."
                 )
 
-            results.sort(
-                key=lambda item: item.get(
-                    "score",
-                    0.0,
-                ),
-                reverse=True,
-            )
-
-            results = self._select_relevant_chunks(
-                results=results,
-                question=question,
-                is_broad_question=is_broad_question,
-            )
-
-            intent_str = str(query_analysis.intent).lower()
-
-            # =========================================================================
-            # Special handling for Multi-Document Synthesis (Multi-RAG)
-            # =========================================================================
-            if (intent_str in ("summary", "comparison", "general") or getattr(query_analysis, "intent", None) in ("SUMMARY", "COMPARISON", "GENERAL")) and len(document_ids) > 1:
-                logger.info("Multi-Document Synthesis triggered for %d documents (Intent: %s).", len(document_ids), intent_str)
-                
-                baseline_chunks = []
-                doc_baselines = []
-                for doc_id in document_ids:
-                    doc_baseline = [c for c in chunks if c.document_id == doc_id and c.page_number == 1]
-                    doc_baseline.sort(key=lambda x: x.chunk_index)
-                    doc_baselines.append(doc_baseline[:3])
-                
-                # Interleave chunks: chunk0 from doc1, chunk0 from doc2... then chunk1...
-                for i in range(3):
-                    for db in doc_baselines:
-                        if i < len(db):
-                            baseline_chunks.append(db[i])
-                
-                logger.info("Extracted %d baseline chunks across all documents.", len(baseline_chunks))
-                
-                # Ensure no duplicates in results
-                baseline_chunk_ids = {id(c) for c in baseline_chunks}
-                filtered_results = [r for r in results if id(r["chunk"]) not in baseline_chunk_ids]
-                
-                baseline_results = [
-                    {"chunk": c, "score": 1.0 - (i * 0.001)}
-                    for i, c in enumerate(baseline_chunks)
-                ]
-                
-                results = baseline_results + filtered_results
-
-            # =========================================================================
-            # Special handling for Table of Contents (TOC) queries to maintain continuity
-            # =========================================================================
-            original_max_chars = self.token_budget_service.max_characters
-            # Increase budget for comprehensive summaries, comparisons, or TOC extraction (safe for free-tier rate limits)
-            if intent_str in ("toc", "summary", "comparison", "general") or getattr(query_analysis, "intent", None) in ("TOC", "SUMMARY", "COMPARISON", "GENERAL"):
-                self.token_budget_service.max_characters = 5000
-                logger.info("Increased token budget limit to 5000 characters for intent: %s", intent_str)
-            
-            if (intent_str == "toc" or query_analysis.intent == QueryIntent.TOC) and results:
-                logger.info("TOC intent matched successfully. Pulling full sequential pages.")
-                toc_page = None
-                toc_doc_id = None
-                
-                # 1. Identify the likely start page of the TOC
-                for r in results:
-                    c = r["chunk"]
-                    t_lower = c.text.lower()
-                    if "table of contents" in t_lower or "contents" in t_lower or "index" in t_lower:
-                        toc_page = c.page_number
-                        toc_doc_id = c.document_id
-                        break
-                
-                if toc_page is None:
-                    # Fallback to the top-scoring chunk's page
-                    toc_page = results[0]["chunk"].page_number
-                    toc_doc_id = results[0]["chunk"].document_id
-                
-                logger.info("TOC start page identified: Page %s in document %s", toc_page, toc_doc_id)
-                
-                # 2. Extract all chunks for the TOC start page and the subsequent page
-                toc_chunks = [
-                    c for c in chunks
-                    if c.document_id == toc_doc_id and c.page_number in (toc_page, toc_page + 1)
-                ]
-                
-                logger.info("Extracted %d chunks for sequential pages %s and %s", len(toc_chunks), toc_page, toc_page + 1)
-                
-                # 3. Sort them sequentially by page and chunk index to maintain reading order
-                toc_chunks.sort(key=lambda x: (x.page_number, x.chunk_index))
-                
-                # 4. Replace results with these ordered chunks
-                results = [
-                    {"chunk": c, "score": 1.0 - (i * 0.01)}
-                    for i, c in enumerate(toc_chunks)
-                ]
-                logger.info("Replaced results list with sequential TOC chunks.")
-            print(
-                "========== FINAL SELECTED CHUNKS =========="
-            )
-
-            for result in results:
-
-                chunk = result["chunk"]
-
-                print(
-                    f"Page {chunk.page_number} "
-                    f"chunk={chunk.chunk_index} "
-                    f"score={result.get('score')}"
+                results = self.retrieval_service.retrieve_toc_chunks(
+                    results=results,
+                    chunks=chunks,
                 )
-
-            print(
-                "============================================"
+            # ============================================================
+            # 7. Context Compression
+            # ============================================================
+            original_max_chars = (
+                self.token_budget_service.max_characters
             )
 
             if results:
 
-                timer.start(
-                    "Context Compressor"
-                )
+                timer.start("Context Compressor")
 
                 results = (
                     self.context_compressor_service
                     .compress(results)
                 )
 
-                timer.stop(
-                    "Context Compressor"
-                )
+                timer.stop("Context Compressor")
 
-                timer.start(
-                    "Token Budget"
-                )
+                # ========================================================
+                # 8. Token Budget
+                # ========================================================
+
+                timer.start("Token Budget")
+
                 protected_pages = {
                     (
                         document_id,
@@ -1348,53 +978,37 @@ Question:
                     for document_id in document_ids
                     for page_number in explicit_pages
                 }
-                results = (
-                    self.token_budget_service.apply(
-                        results,
-                        ensure_document_coverage=(
-                            "PER_DOCUMENT"
-                            in retrieval_scopes
-                        ),protected_pages=protected_pages,
-                    )
+
+                results = self.token_budget_service.apply(
+                    results,
+                    ensure_document_coverage=(
+                        "PER_DOCUMENT"
+                        in retrieval_scopes
+                    ),
+                    protected_pages=protected_pages,
                 )
-                self.token_budget_service.max_characters = original_max_chars
-                if explicit_pages:
-                    print(
-                        "\n========== EXPLICIT PAGE CONTEXT =========="
-                    )
 
-                    for page in explicit_pages:
-                        page_chunks = [
-                            result["chunk"]
-                            for result in results
-                            if result["chunk"].page_number == page
-                        ]
-
-                        print(
-                            f"Page {page}: "
-                            f"{len(page_chunks)} chunks"
-                        )
-
-                        print(
-                            "Chunk indexes:",
-                            [
-                                chunk.chunk_index
-                                for chunk in page_chunks
-                            ],
-                        )
-
-                    print(
-                        "===========================================\n"
-                    )
-                timer.stop(
-                    "Token Budget"
+                self.token_budget_service.max_characters = (
+                    original_max_chars
                 )
+
+                timer.stop("Token Budget")
 
                 for source_id, result in enumerate(
                     results,
                     start=1,
                 ):
                     result["source_id"] = source_id
+
+            else:
+                # Always restore the original budget.
+                self.token_budget_service.max_characters = (
+                    original_max_chars
+                )
+
+            # ============================================================
+            # 9. No relevant information
+            # ============================================================
 
             if (
                 not results
@@ -1416,6 +1030,10 @@ Question:
                     },
                 }
 
+            # ============================================================
+            # 10. Build Context
+            # ============================================================
+
             context = self._build_context(
                 results=results,
                 metadata_context=metadata_context,
@@ -1423,21 +1041,94 @@ Question:
                 documents=documents,
             )
 
-            timer.start("Prompt Build")
+            # ============================================================
+            # 11. Determine Document Types
+            # ============================================================
 
-            # Detect document types dynamically based on query and document names/metadata
             doc_types = set()
-            for doc in (documents or []):
-                name_lower = doc.get("document_name", "").lower()
-                mime_lower = doc.get("mime_type", "").lower()
-                if any(x in name_lower for x in ["invoice", "bill", "receipt", "payment"]):
+
+            for document in documents:
+
+                name_lower = (
+                    document
+                    .get("document_name", "")
+                    .lower()
+                )
+
+                if any(
+                    keyword in name_lower
+                    for keyword in (
+                        "invoice",
+                        "tax_invoice",
+                        "receipt",
+                        "bill_of_supply",
+                    )
+                ):
                     doc_types.add("invoice")
-                elif mime_lower in ["image/png", "image/jpeg"]:
-                    doc_types.add("invoice")
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "ppt",
+                        "presentation",
+                        "slide",
+                        "deck",
+                        "campaign",
+                    )
+                ):
+                    doc_types.add("presentation")
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "roadmap",
+                        "syllabus",
+                        "curriculum",
+                        "guide",
+                        "tutorial",
+                        "learning",
+                    )
+                ):
+                    doc_types.add("guide")
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "resume",
+                        "cv",
+                        "profile",
+                        "biodata",
+                    )
+                ):
+                    doc_types.add("resume")
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "contract",
+                        "agreement",
+                        "nda",
+                        "terms",
+                    )
+                ):
+                    doc_types.add("contract")
 
             question_lower = question.lower()
-            if any(x in question_lower for x in ["invoice", "bill", "receipt", "payment", "gst", "tax", "amount", "total"]):
+
+            if any(
+                keyword in question_lower
+                for keyword in (
+                    "invoice",
+                    "tax invoice",
+                    "gstin",
+                    "subtotal",
+                    "grand total",
+                    "bill amount",
+                )
+            ):
                 doc_types.add("invoice")
+
+            # ============================================================
+            # 12. Prompt
+            # ============================================================
+
+            timer.start("Prompt Build")
 
             prompt = self.prompt_builder.build(
                 history=history or [],
@@ -1446,22 +1137,29 @@ Question:
                 question=question,
                 intent=query_analysis.intent,
                 doc_types=list(doc_types),
+                detail_level=detail_level,
+                memories=memories,
             )
 
             timer.stop("Prompt Build")
 
+            # ============================================================
+            # 13. LLM
+            # ============================================================
+
             timer.start("LLM")
 
-            response = (
-                await self.ai_service
-                .answer_question(
-                    prompt=prompt,
-                )
+            response = await self.ai_service.answer_question(
+                prompt=prompt,
             )
 
             answer = response["answer"]
 
             timer.stop("LLM")
+
+            # ============================================================
+            # 14. Usage Logging
+            # ============================================================
 
             await self.ai_usage.log(
                 user_id=owner_id,
@@ -1472,35 +1170,41 @@ Question:
                     else None
                 ),
                 endpoint="chat",
-                prompt_tokens=(
-                    response["prompt_tokens"]
-                ),
-                completion_tokens=(
-                    response["completion_tokens"]
-                ),
-                latency_ms=(
-                    response["latency_ms"]
-                ),
+                prompt_tokens=response["prompt_tokens"],
+                completion_tokens=response["completion_tokens"],
+                latency_ms=response["latency_ms"],
             )
+
+            # ============================================================
+            # 15. Content Sources
+            # ============================================================
 
             content_sources = [
                 {
                     "id": result["source_id"],
-                    "document_name": getattr(
-                        result["chunk"],
-                        "document_name",
-                        None
-                    ) or next(
-                        (doc["document_name"] for doc in documents if doc["document_id"] == result["chunk"].document_id),
-                        "Unknown Document"
+                    "document_name": (
+                        getattr(
+                            result["chunk"],
+                            "document_name",
+                            None,
+                        )
+                        or next(
+                            (
+                                document["document_name"]
+                                for document in documents
+                                if (
+                                    document["document_id"]
+                                    == result["chunk"].document_id
+                                )
+                            ),
+                            "Unknown Document",
+                        )
                     ),
                     "page_number": (
-                        result["chunk"]
-                        .page_number
+                        result["chunk"].page_number
                     ),
                     "chunk_index": (
-                        result["chunk"]
-                        .chunk_index
+                        result["chunk"].chunk_index
                     ),
                     "score": round(
                         result["score"],
@@ -1509,15 +1213,17 @@ Question:
                     "snippet": (
                         result["chunk"].text[:200]
                         + "..."
-                        if len(
-                            result["chunk"].text
-                        ) > 200
+                        if len(result["chunk"].text) > 200
                         else result["chunk"].text
                     ),
                     "source_type": "content",
                 }
                 for result in results
             ]
+
+            # ============================================================
+            # 16. Vision Sources
+            # ============================================================
 
             for vision in vision_results:
 
@@ -1527,31 +1233,27 @@ Question:
                 content_sources.append(
                     {
                         "id": vision["source_id"],
-                        "document_name": (
-                            vision["document_id"]
-                        ),
-                        "page_number": (
-                            vision["page_number"]
-                        ),
+                        "document_name": vision["document_id"],
+                        "page_number": vision["page_number"],
                         "chunk_index": None,
                         "score": None,
                         "snippet": (
                             vision["result"][:200]
                             + "..."
-                            if len(
-                                vision["result"]
-                            ) > 200
+                            if len(vision["result"]) > 200
                             else vision["result"]
                         ),
                         "source_type": "vision",
                     }
                 )
 
-            answer = (
-                self.citation_validator.validate(
-                    answer=answer,
-                    sources=content_sources,
-                )
+            # ============================================================
+            # 17. Citation Validation
+            # ============================================================
+
+            answer = self.citation_validator.validate(
+                answer=answer,
+                sources=content_sources,
             )
 
             timer.print()
@@ -1748,143 +1450,315 @@ Question:
         history: list | None = None,
         summary: str | None = None,
         top_k: int = 5,
+        detail_level: str = "standard",
     ):
         try:
-            query_analysis = self.query_analyzer.analyze(question)
-            intent_str = str(query_analysis.intent).lower()
-            
-            # If it's a multi-document comparison query, run extraction first
-            if len(document_ids) > 1 and intent_str in ("comparison", "summary", "general"):
-                md_table, metadata_sources, content_sources = await self._run_extraction_pipeline(
+            # Load user memories (cross-session memory summaries)
+            from app.common.constants import CollectionName
+            memories_col = self.db[CollectionName.USER_MEMORIES.value]
+            memories_doc = await memories_col.find_one({"owner_id": owner_id})
+            memories = memories_doc.get("memories", []) if memories_doc else []
+
+            # ============================================================
+            # 1. Query Analysis
+            # ============================================================
+
+            query_analysis = self.query_analyzer.analyze(
+                question
+            )
+
+            intent_str = str(
+                query_analysis.intent
+            ).lower()
+
+            logger.info(
+                "Streaming query analysis: intent=%s scope=%s "
+                "broad=%s visual=%s pages=%s",
+                query_analysis.intent,
+                query_analysis.scope,
+                query_analysis.is_broad,
+                query_analysis.requires_visual,
+                query_analysis.page_numbers,
+            )
+
+            # ============================================================
+            # 2. Multi-document structured extraction (for invoices)
+            # ============================================================
+
+            invoice_keywords = {
+                "invoice", "bill", "billing", "gst", "tax", "subtotal", 
+                "grand total", "supplier", "buyer", "vendor", "rate", 
+                "amount", "price", "payment", "bank details", "cgst", "sgst"
+            }
+            q_lower = question.lower()
+            is_invoice_comparison = (
+                len(document_ids) > 1
+                and intent_str == "comparison"
+                and any(k in q_lower for k in invoice_keywords)
+            )
+
+            if is_invoice_comparison:
+
+                logger.info(
+                    "Multi-document streaming invoice request. "
+                    "Using Isolation Extraction Pipeline."
+                )
+
+                (
+                    md_table,
+                    metadata_sources,
+                    content_sources,
+                ) = await self._run_extraction_pipeline(
                     document_ids=document_ids,
                     question=question,
-                    owner_id=owner_id
+                    owner_id=owner_id,
                 )
+
                 all_sources = {
                     "metadata": metadata_sources,
-                    "content": content_sources
+                    "content": content_sources,
                 }
-                
-                # Yield sources first so frontend gets them
-                yield {"type": "sources", "content": all_sources}
-                
-                context = f"=== CONSOLIDATED DOCUMENT RECORDS ===\n\n{md_table}\n\n"
+
+                # Send sources first.
+                yield {
+                    "type": "sources",
+                    "content": all_sources,
+                }
+
+                context = (
+                    "=== CONSOLIDATED DOCUMENT RECORDS ===\n\n"
+                    f"{md_table}\n\n"
+                )
+
                 prompt = self.prompt_builder.build(
                     history=history or [],
                     summary=summary,
                     context=context,
                     question=question,
                     intent=query_analysis.intent,
-                    doc_types=["invoice"]
+                    doc_types=["invoice"],
+                    detail_level=detail_level,
+                    memories=memories,
                 )
-                
+
                 full_answer = ""
-                async for chunk in self.ai_service.answer_question_stream(prompt=prompt):
+
+                async for chunk in (
+                    self.ai_service.answer_question_stream(
+                        prompt=prompt
+                    )
+                ):
+
                     full_answer += chunk
-                    yield {"type": "chunk", "content": chunk}
-                    
-                yield {"type": "done", "content": full_answer}
+
+                    yield {
+                        "type": "chunk",
+                        "content": chunk,
+                    }
+
+                full_answer = (
+                    self.citation_validator.validate(
+                        answer=full_answer,
+                        sources=content_sources,
+                    )
+                )
+
+                yield {
+                    "type": "done",
+                    "content": full_answer,
+                }
+
                 return
 
-            # Fallback path for normal single-document queries
-            explicit_pages = query_analysis.page_numbers
-            is_broad_question = query_analysis.is_broad
-            requires_images = query_analysis.requires_visual
-            is_page_specific = (
-                bool(explicit_pages)
-                and query_analysis.scope == "page"
-                and not is_broad_question
-            )
-            
-            retrieval_scopes = await self._determine_retrieval_scopes(
+            # ============================================================
+            # 3. Shared Retrieval Pipeline
+            # ============================================================
+
+            retrieval_data = await self._retrieve_context(
                 question=question,
-                document_count=len(document_ids),
+                document_ids=document_ids,
+                owner_id=owner_id,
+                query_analysis=query_analysis,
             )
-            if is_broad_question and len(document_ids) > 1 and "PER_DOCUMENT" not in retrieval_scopes:
-                retrieval_scopes.append("PER_DOCUMENT")
-                
-            retrieval_top_k = self.query_analyzer._get_retrieval_top_k(
-                intent=query_analysis.intent,
-                is_broad=query_analysis.is_broad,
-                scope=query_analysis.scope,
-            )
-            
-            metadata_context = ""
-            metadata_sources = []
-            documents = await self._get_document_metadata(document_ids)
-            
-            if "METADATA" in retrieval_scopes:
-                metadata_context = "\n".join(
-                    f"Document: {doc['document_name']}\nPage count: {doc['page_count']}\nFile size: {doc['file_size']}\nFile type: {doc['mime_type']}\nStatus: {doc['status']}\n"
-                    for doc in documents
-                )
-                metadata_sources = [{**doc, "source_type": "metadata"} for doc in documents]
-                
-            query_embedding = None
-            chunks = []
-            results = []
+
+            results = retrieval_data["results"]
+            chunks = retrieval_data["chunks"]
+            documents = retrieval_data["documents"]
+            metadata_context = retrieval_data["metadata_context"]
+            metadata_sources = retrieval_data["metadata_sources"]
+            retrieval_scopes = retrieval_data["retrieval_scopes"]
+            explicit_pages = retrieval_data["explicit_pages"]
+            is_broad_question = retrieval_data["is_broad_question"]
+            requires_images = retrieval_data["requires_images"]
+
+            # ============================================================
+            # 4. Vision
+            # ============================================================
+
             vision_results = []
-            
-            if "GLOBAL" in retrieval_scopes or "PER_DOCUMENT" in retrieval_scopes:
-                query_embedding = await self.embedding_cache.get(question)
-                if query_embedding is None:
-                    query_embedding = await self.embedding_service.create_embedding(question)
-                    await self.embedding_cache.set(question, query_embedding)
-                    
-                chunks = await self.chunk_service.get_chunks(document_ids)
-                
-            filtered_chunks = []
-            if "GLOBAL" in retrieval_scopes or "PER_DOCUMENT" in retrieval_scopes:
-                filtered_chunks = self.metadata_filter_service.filter(question=question, chunks=chunks)
-                if is_page_specific:
-                    filtered_chunks = self._filter_chunks_by_pages(chunks=filtered_chunks, document_ids=document_ids, pages=explicit_pages)
-                    
-            if "GLOBAL" in retrieval_scopes:
-                results.extend(await self._search_global(question=question, query_embedding=query_embedding, chunks=filtered_chunks, top_k=retrieval_top_k, owner_id=owner_id, document_ids=document_ids))
-                
-            if "PER_DOCUMENT" in retrieval_scopes:
-                results.extend(await self._search_per_document(question=question, query_embedding=query_embedding, chunks=filtered_chunks, top_k=retrieval_top_k, owner_id=owner_id))
-                
-            results = self._remove_duplicate_results(results)
-            
-            if is_page_specific:
-                page_chunks = [c for c in chunks if c.document_id in document_ids and c.page_number in explicit_pages]
-                existing_keys = {(r["chunk"].document_id, r["chunk"].page_number, r["chunk"].chunk_index) for r in results}
-                for c in page_chunks:
-                    if (c.document_id, c.page_number, c.chunk_index) not in existing_keys:
-                        results.append({"chunk": c, "score": 0.0})
-                        
+
             if requires_images:
-                image_records = await self._retrieve_images(document_ids=document_ids, results=results, explicit_pages=explicit_pages, requires_images=requires_images)
-                vision_results = await self._run_vision(images=image_records, question=question)
-                
-            results.sort(key=lambda item: item.get("score", 0.0), reverse=True)
-            results = self._select_relevant_chunks(results=results, question=question, is_broad_question=is_broad_question)
-            
-            # Limit characters
-            original_max_chars = self.token_budget_service.max_characters
-            if intent_str in ("toc", "summary", "comparison", "general") or getattr(query_analysis, "intent", None) in ("TOC", "SUMMARY", "COMPARISON", "GENERAL"):
+
+                image_records = await self._retrieve_images(
+                    document_ids=document_ids,
+                    results=results,
+                    explicit_pages=explicit_pages,
+                    requires_images=requires_images,
+                )
+
+                vision_results = await self._run_vision(
+                    images=image_records,
+                    question=question,
+                )
+
+            # ============================================================
+            # 5. Token Budget
+            # ============================================================
+
+            original_max_chars = (
+                self.token_budget_service.max_characters
+            )
+
+            if intent_str in (
+                "toc",
+                "summary",
+                "comparison",
+                "general",
+            ):
                 self.token_budget_service.max_characters = 5000
-                
-            results = self.token_budget_service.apply(results, ensure_document_coverage=("PER_DOCUMENT" in retrieval_scopes), protected_pages={(d, p) for d in document_ids for p in explicit_pages})
-            self.token_budget_service.max_characters = original_max_chars
-            
-            for source_id, result in enumerate(results, start=1):
+
+            try:
+
+                protected_pages = {
+                    (
+                        document_id,
+                        page_number,
+                    )
+                    for document_id in document_ids
+                    for page_number in explicit_pages
+                }
+
+                results = self.token_budget_service.apply(
+                    results,
+                    ensure_document_coverage=(
+                        "PER_DOCUMENT"
+                        in retrieval_scopes
+                    ),
+                    protected_pages=protected_pages,
+                )
+
+            finally:
+
+                self.token_budget_service.max_characters = (
+                    original_max_chars
+                )
+
+            # ============================================================
+            # 6. Assign Source IDs
+            # ============================================================
+
+            for source_id, result in enumerate(
+                results,
+                start=1,
+            ):
                 result["source_id"] = source_id
-                
-            context = self._build_context(results=results, metadata_context=metadata_context, vision_results=vision_results, documents=documents)
-            
+
+            # ============================================================
+            # 7. Build Context
+            # ============================================================
+
+            context = self._build_context(
+                results=results,
+                metadata_context=metadata_context,
+                vision_results=vision_results,
+                documents=documents,
+            )
+
+            # ============================================================
+            # 8. Determine Document Types
+            # ============================================================
+
             doc_types = set()
-            for doc in (documents or []):
-                name_lower = doc.get("document_name", "").lower()
-                mime_lower = doc.get("mime_type", "").lower()
-                if any(x in name_lower for x in ["invoice", "bill", "receipt", "payment"]):
+
+            for document in documents:
+
+                name_lower = (
+                    document
+                    .get("document_name", "")
+                    .lower()
+                )
+
+                if any(
+                    keyword in name_lower
+                    for keyword in (
+                        "invoice",
+                        "tax_invoice",
+                        "receipt",
+                        "bill_of_supply",
+                    )
+                ):
                     doc_types.add("invoice")
-                elif mime_lower in ["image/png", "image/jpeg"]:
-                    doc_types.add("invoice")
-            if any(x in question.lower() for x in ["invoice", "bill", "receipt", "payment", "gst", "tax", "amount", "total"]):
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "ppt",
+                        "presentation",
+                        "slide",
+                        "deck",
+                        "campaign",
+                    )
+                ):
+                    doc_types.add("presentation")
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "roadmap",
+                        "syllabus",
+                        "curriculum",
+                        "guide",
+                        "tutorial",
+                        "learning",
+                    )
+                ):
+                    doc_types.add("guide")
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "resume",
+                        "cv",
+                        "profile",
+                        "biodata",
+                    )
+                ):
+                    doc_types.add("resume")
+                elif any(
+                    keyword in name_lower
+                    for keyword in (
+                        "contract",
+                        "agreement",
+                        "nda",
+                        "terms",
+                    )
+                ):
+                    doc_types.add("contract")
+
+            if any(
+                keyword in question.lower()
+                for keyword in (
+                    "invoice",
+                    "tax invoice",
+                    "gstin",
+                    "subtotal",
+                    "grand total",
+                    "bill amount",
+                )
+            ):
                 doc_types.add("invoice")
-                
+
+            # ============================================================
+            # 9. Prompt
+            # ============================================================
+
             prompt = self.prompt_builder.build(
                 history=history or [],
                 summary=summary,
@@ -1892,46 +1766,147 @@ Question:
                 question=question,
                 intent=query_analysis.intent,
                 doc_types=list(doc_types),
+                detail_level=detail_level,
+                memories=memories,
             )
-            
+
+            # ============================================================
+            # 10. Content Sources
+            # ============================================================
+
             content_sources = [
                 {
                     "id": result["source_id"],
-                    "document_name": getattr(result["chunk"], "document_name", None) or next((doc["document_name"] for doc in documents if doc["document_id"] == result["chunk"].document_id), "Unknown Document"),
-                    "page_number": result["chunk"].page_number,
-                    "chunk_index": result["chunk"].chunk_index,
-                    "score": round(result["score"], 4),
-                    "snippet": result["chunk"].text[:200] + "..." if len(result["chunk"].text) > 200 else result["chunk"].text,
+                    "document_name": (
+                        getattr(
+                            result["chunk"],
+                            "document_name",
+                            None,
+                        )
+                        or next(
+                            (
+                                document["document_name"]
+                                for document in documents
+                                if (
+                                    document["document_id"]
+                                    == result["chunk"].document_id
+                                )
+                            ),
+                            "Unknown Document",
+                        )
+                    ),
+                    "page_number": (
+                        result["chunk"].page_number
+                    ),
+                    "chunk_index": (
+                        result["chunk"].chunk_index
+                    ),
+                    "score": round(
+                        result["score"],
+                        4,
+                    ),
+                    "snippet": (
+                        result["chunk"].text[:200]
+                        + "..."
+                        if len(result["chunk"].text) > 200
+                        else result["chunk"].text
+                    ),
                     "source_type": "content",
                 }
                 for result in results
             ]
+
+            # ============================================================
+            # 11. Vision Sources
+            # ============================================================
+
             for vision in vision_results:
+
                 if not vision.get("result"):
                     continue
-                content_sources.append({
-                    "id": vision["source_id"],
-                    "document_name": vision["document_id"],
-                    "page_number": vision["page_number"],
-                    "chunk_index": None,
-                    "score": None,
-                    "snippet": vision["result"][:200] + "..." if len(vision["result"]) > 200 else vision["result"],
-                    "source_type": "vision",
-                })
-                
-            all_sources = {"metadata": metadata_sources, "content": content_sources}
-            
-            # Yield sources
-            yield {"type": "sources", "content": all_sources}
-            
+
+                content_sources.append(
+                    {
+                        "id": vision["source_id"],
+                        "document_name": vision["document_id"],
+                        "page_number": vision["page_number"],
+                        "chunk_index": None,
+                        "score": None,
+                        "snippet": (
+                            vision["result"][:200]
+                            + "..."
+                            if len(vision["result"]) > 200
+                            else vision["result"]
+                        ),
+                        "source_type": "vision",
+                    }
+                )
+
+            all_sources = {
+                "metadata": metadata_sources,
+                "content": content_sources,
+            }
+
+            # ============================================================
+            # 12. Send Sources
+            # ============================================================
+
+            yield {
+                "type": "sources",
+                "content": all_sources,
+            }
+
+            # ============================================================
+            # 13. Stream LLM Response
+            # ============================================================
+
             full_answer = ""
-            async for chunk in self.ai_service.answer_question_stream(prompt=prompt):
+
+            async for chunk in (
+                self.ai_service.answer_question_stream(
+                    prompt=prompt
+                )
+            ):
+
                 full_answer += chunk
-                yield {"type": "chunk", "content": chunk}
-                
-            full_answer = self.citation_validator.validate(answer=full_answer, sources=content_sources)
-            yield {"type": "done", "content": full_answer}
-            
+
+                yield {
+                    "type": "chunk",
+                    "content": chunk,
+                }
+
+            # ============================================================
+            # 14. Validate Citations
+            # ============================================================
+
+            full_answer = (
+                self.citation_validator.validate(
+                    answer=full_answer,
+                    sources=content_sources,
+                )
+            )
+
+            # ============================================================
+            # 15. Done
+            # ============================================================
+
+            yield {
+                "type": "done",
+                "content": full_answer,
+            }
+
+        except SearchException:
+            raise
+
+        except BaseAppException:
+            raise
+
         except Exception as exception:
-            logger.exception("Document search stream failed.")
-            raise SearchException(str(exception)) from exception
+
+            logger.exception(
+                "Document search stream failed."
+            )
+
+            raise SearchException(
+                str(exception)
+            ) from exception

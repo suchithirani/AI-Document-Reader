@@ -453,6 +453,21 @@ class DocumentProcessingService:
         )
 
         # ---------------------------------
+        # OCR Quality Check
+        # ---------------------------------
+        from app.ocr.quality import calculate_document_quality
+        quality_score = await asyncio.to_thread(
+            calculate_document_quality,
+            file_path=document.storage_path,
+            extension=document.extension,
+        )
+        await self.repository.update(
+            document_id,
+            {"ocr_quality_score": quality_score}
+        )
+        document.ocr_quality_score = quality_score
+
+        # ---------------------------------
         # PDF Image Extraction
         # ---------------------------------
 
@@ -628,6 +643,12 @@ class DocumentProcessingService:
         await self.repository.update_status(
             str(document.id),
             DocumentStatus.READY,
+        )
+
+        from app.workers.ai_tasks import extract_document_metadata_task
+        extract_document_metadata_task.delay(
+            owner_id=owner_id,
+            document_id=str(document.id),
         )
 
         await self.response_cache.delete(

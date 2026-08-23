@@ -41,3 +41,10 @@ def get_analytics_service(
     db = Depends(get_database),
 ):
     return AnalyticsService(db)
+
+from app.modules.document_collections.service import DocumentCollectionService
+
+def get_document_collection_service(
+    db=Depends(get_database),
+) -> DocumentCollectionService:
+    return DocumentCollectionService(db)

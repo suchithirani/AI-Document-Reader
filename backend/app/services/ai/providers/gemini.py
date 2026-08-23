@@ -2,6 +2,7 @@ import asyncio
 import time
 
 from google import genai
+from google.genai import types
 
 from app.common.exceptions.ai import (
     AIAuthenticationException,
@@ -36,10 +37,17 @@ class GeminiAIService:
         try:
             start = time.perf_counter()
 
+            config = types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True
+                )
+            )
+
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
                 model=model or settings.GENERATION_MODEL,
                 contents=prompt,
+                config=config,
             )
 
             latency = (
@@ -133,9 +141,16 @@ class GeminiAIService:
             Text chunks as they are generated.
         """
         try:
+            config = types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True
+                )
+            )
+
             response_stream = await self.client.aio.models.generate_content_stream(
                 model=settings.GENERATION_MODEL,
                 contents=prompt,
+                config=config,
             )
             
             async for chunk in response_stream:

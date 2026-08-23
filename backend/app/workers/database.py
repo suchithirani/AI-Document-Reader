@@ -15,7 +15,8 @@ async def get_worker_database():
         _client = AsyncMongoClient(
             settings.MONGODB_URI,
             maxPoolSize=50,
-            minPoolSize=5,
+            minPoolSize=0,
+            maxIdleTimeMS=45000,
             serverSelectionTimeoutMS=10000,
             connectTimeoutMS=10000,
             socketTimeoutMS=30000,

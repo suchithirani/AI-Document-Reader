@@ -198,3 +198,21 @@ async def process_documents(
         message="Documents queued for processing.",
         data=result,
     )
+
+@document_router.get(
+    "/{document_id}/versions",
+    dependencies=[rate_limit(limit=10, window=60)],
+)
+async def get_document_versions(
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    service: DocumentService = Depends(get_document_service),
+):
+    result = await service.get_document_versions(
+        current_user=current_user,
+        document_id=document_id,
+    )
+    return success_response(
+        message="Document versions retrieved successfully.",
+        data=[r.model_dump(by_alias=True) for r in result],
+    )

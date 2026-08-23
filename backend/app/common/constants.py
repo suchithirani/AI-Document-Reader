@@ -57,6 +57,8 @@ class CollectionName(StrEnum):
     ANALYTICS_DAILY = "analytics_daily"
     AI_USAGE_LOGS = "ai_usage_logs"
     SYSTEM_METRICS = "system_metrics"
+    DOCUMENT_COLLECTIONS = "document_collections"
+    USER_MEMORIES = "user_memories"
     PROCESSED_DOCUMENT_CONTENT = "processed_document_content"
     DOCUMENT_IMAGES = "document_images"
 
@@ -121,3 +123,7 @@ DOCUMENT_PROGRESS = {
 class ChatRole(StrEnum):
     USER = "USER"
     ASSISTANT = "ASSISTANT"
+
+# OCR Quality Metrics Warning Thresholds
+OCR_QUALITY_WARNING_THRESHOLD = 60.0
+OCR_QUALITY_CRITICAL_THRESHOLD = 30.0

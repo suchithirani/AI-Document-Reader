@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.common.constants import DocumentStatus
 from app.common.base_schema import BaseSchema
@@ -36,6 +36,29 @@ class DocumentResponse(BaseSchema):
     created_at: datetime
 
     updated_at: datetime
+
+    description: str | None = None
+    document_type: str | None = None
+    tags: list[str] = []
+    extracted_metadata: dict = {}
+    version: int = 1
+    version_group_id: str | None = None
+    is_latest: bool = True
+    ocr_quality_score: float | None = None
+    ocr_quality_warning: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def compute_quality_warnings(cls, data):
+        if isinstance(data, dict):
+            score = data.get("ocr_quality_score")
+            if score is None:
+                score = data.get("ocrQualityScore")
+            
+            if score is not None:
+                from app.common.constants import OCR_QUALITY_WARNING_THRESHOLD
+                data["ocr_quality_warning"] = score < OCR_QUALITY_WARNING_THRESHOLD
+        return data
 
 
 class ProcessDocumentsRequest(BaseSchema):

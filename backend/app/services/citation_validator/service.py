@@ -4,7 +4,7 @@ import re
 class CitationValidator:
 
     CITATION_PATTERN = re.compile(
-        r"(?:\[|【)(\d+)(?:\]|】)"
+        r"(?:\[|【)(\d+)(?:†[^\]】]*)?(?:\]|】)"
     )
 
     def validate(

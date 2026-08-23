@@ -29,6 +29,14 @@ class Document(BaseModel):
     )
     progress: int = Field(default=0,ge=0,le=100,)
     file_hash: str | None = None
+    description: str | None = None
+    document_type: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    extracted_metadata: dict = Field(default_factory=dict)
+    version: int = Field(default=1)
+    version_group_id: str | None = None
+    is_latest: bool = True
+    ocr_quality_score: float | None = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC)
     )

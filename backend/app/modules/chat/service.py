@@ -33,19 +33,31 @@ from app.workers.chat_summary_task import generate_summary_task
 class ChatService:
 
     def __init__(self, db):
-
+        self.db = db
         self.repository = ChatRepository(db)
-
         self.search_service = SearchService(db)
-
         self.document_repository = DocumentRepository(db)
         self.chat_session_document_repository = ChatSessionDocumentRepository(db)
 
     async def create_session(
         self,
         owner_id: str,
-        document_ids: list[str],
+        document_ids: list[str] | None = None,
+        collection_id: str | None = None,
     ):
+        if collection_id:
+            from app.modules.document_collections.repository import DocumentCollectionRepository
+            col_repo = DocumentCollectionRepository(self.db)
+            collection = await col_repo.get_collection(collection_id)
+            if collection is None:
+                raise NotFoundException("Collection not found.")
+            if collection.owner_id != owner_id:
+                raise ForbiddenException("Access to this collection is denied.")
+            document_ids = collection.document_ids
+
+        if not document_ids:
+            raise BadRequestException("No documents linked to this chat session.")
+
         for document_id in document_ids:
             document = (
                 await self.document_repository.get_document_by_id(
@@ -158,6 +170,7 @@ class ChatService:
         owner_id: str,
         session_id: str,
         question: str,
+        detail_level: str = "standard",
     ):
 
         session = await self.repository.get_session(
@@ -228,6 +241,7 @@ class ChatService:
             question=question,
             history=history,
             summary=session.summary,
+            detail_level=detail_level,
         )
 
         await self.repository.create_message(
@@ -257,6 +271,13 @@ class ChatService:
                 session_id=session_id,
                 question=question,
                 answer=result["answer"],
+            )
+
+        if len(messages) == 1 or len(messages) % 5 == 0:
+            from app.workers.ai_tasks import update_user_memory_task
+            update_user_memory_task.delay(
+                owner_id=owner_id,
+                session_id=session_id,
             )
 
         return result
@@ -291,6 +312,7 @@ class ChatService:
         owner_id: str,
         session_id: str,
         question: str,
+        detail_level: str = "standard",
     ):
 
         session = await self.repository.get_session(
@@ -363,6 +385,7 @@ class ChatService:
             question=question,
             history=history,
             summary=session.summary,
+            detail_level=detail_level,
         ):
             if chunk["type"] == "chunk":
                 yield chunk
@@ -391,5 +414,12 @@ class ChatService:
                         session_id=session_id,
                         question=question,
                         answer=answer,
+                    )
+                
+                if len(messages) == 1 or len(messages) % 5 == 0:
+                    from app.workers.ai_tasks import update_user_memory_task
+                    update_user_memory_task.delay(
+                        owner_id=owner_id,
+                        session_id=session_id,
                     )
 

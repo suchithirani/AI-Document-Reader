@@ -8,12 +8,14 @@ class PromptBuilder:
         summary: str | None = None,
         intent: str = "GLOBAL",
         doc_types: list[str] = None,
+        detail_level: str = "standard",
+        memories: list[str] | None = None,
     ) -> str:
         if doc_types is None:
             doc_types = []
 
         sections = [
-            self._system_prompt(intent, doc_types),
+            self._system_prompt(intent, doc_types, detail_level, memories),
             self._history(history),
             self._summary(summary),
             self._context(context),
@@ -24,7 +26,7 @@ class PromptBuilder:
             section for section in sections if section
         )
 
-    def _system_prompt(self, intent: str, doc_types: list[str]) -> str:
+    def _system_prompt(self, intent: str, doc_types: list[str], detail_level: str = "standard", memories: list[str] | None = None) -> str:
         prompt_parts = [
             "You are an AI Document Assistant.",
             "Answer the user's question using ONLY the supplied DOCUMENT CONTEXT.",
@@ -95,6 +97,13 @@ class PromptBuilder:
         # Inject Standard UX Formatting rules
         prompt_parts.append(self._ux_formatting_rules() + "\n")
 
+        # Inject Detail Level Rules (ELI5 / Standard / Expert)
+        prompt_parts.append(self._detail_level_rules(detail_level) + "\n")
+
+        # Inject User Memories (Cross-session memory summaries)
+        if memories:
+            prompt_parts.append(self._user_memories(memories) + "\n")
+
         # Inject Constraints
         prompt_parts.append(
             "NEVER:\n"
@@ -151,14 +160,18 @@ TABLE CELL RULES:
 - Use **N/A** consistently for ALL missing or unreadable fields. Do not mix —, "Not listed", "unknown", or other inconsistent placeholders.""".strip()
 
     def _comparison_rules(self) -> str:
-        return """COMPARISON SYNTHESIS RULES:
-- You are provided with a pre-validated, consolidated Markdown table containing records for each document.
-- Your task is to analyze this comparison table and formulate the final response answering the user's questions.
-- NEVER invent, modify, or infer missing values. If a cell contains "N/A" or "Not clearly readable", keep it exactly as is.
-- STRICT GROUNDING: Use only evidence belonging to the current document. Never infer missing fields from other documents. Never copy values between documents. If evidence is missing, return N/A. If OCR is ambiguous, return Not clearly readable. Do not silently correct or reinterpret numerical values. Preserve the source value and flag inconsistencies.
-- Highlight key points and any discrepancies (anomalies) in a dedicated observations section after the table.
-- CITATIONS: When referencing data from a specific document row, always append the source number citation (e.g. [1], [2]) listed in the "Sources" column of that row. Cite immediately after the fact.
-- Maintain the table format exactly as built in the context.""".strip()
+        return """COMPARISON & CROSS-DOCUMENT SYNTHESIS RULES:
+- Identify the true domain/category of each document (e.g. syllabus/curriculum, project presentation/slides, financial invoice, technical specification, research report, contract, resume).
+- DYNAMICALLY SELECT RELEVANT COMPARATIVE DIMENSIONS:
+  - For educational/guides vs. project/presentations: Compare Core Theme/Subject, Learning/Project Objectives, Covered Technologies & Frameworks, Scope & Practical Work, Target Audience, and Structure.
+  - For technical/engineering documents: Compare Architecture, Components, Ingestion/Processing Pipelines, Data Sources, and Performance Metrics.
+  - For financial/invoices (only when analyzing billing files): Compare Vendor/Issuer, Customer, Items/Services, Subtotal, Taxes, and Grand Total.
+  - For contracts/legal: Compare Parties, Effective Dates, Core Obligations, Liabilities, and Termination.
+  - For resumes/profiles: Compare Education, Technical Skills, Professional Experience, and Projects.
+- NEVER force irrelevant or foreign fields (e.g., NEVER use financial/invoice headers on non-financial documents, and never use syllabus headers on invoices).
+- Use a structured Markdown comparison table whenever comparing 2+ documents, using rows/columns that match the actual subject matter of the files.
+- STRICT GROUNDING: Rely strictly on the provided context evidence. Never invent data or infer missing information across different documents.
+- Provide a clear breakdown of key similarities, key differences, and a synthesis summary with precise citations ([1], [2], etc.).""".strip()
 
     def _toc_rules(self) -> str:
         return """TABLE OF CONTENTS (TOC) GRANULARITY:
@@ -211,4 +224,38 @@ TABLE CELL RULES:
         return (
             "# CURRENT USER QUESTION\n\n"
             f"{question}"
+        )
+
+    def _detail_level_rules(self, detail_level: str) -> str:
+        level = (detail_level or "standard").lower()
+        if level == "eli5":
+            return (
+                "DYNAMIC COMPLEXITY (ELI5):\n"
+                "- Explain the concepts in very simple, easy-to-understand terms.\n"
+                "- Use simple everyday analogies and non-technical language.\n"
+                "- Act as if you are explaining the information to a 5-year-old child.\n"
+                "- Avoid dense technical jargon, complex acronyms, or heavy financial terminology unless absolutely necessary."
+            )
+        elif level == "expert":
+            return (
+                "DYNAMIC COMPLEXITY (EXPERT):\n"
+                "- Provide a highly detailed, professional, and deep technical analysis.\n"
+                "- Use precise, advanced terminology and appropriate industry jargon.\n"
+                "- Extract and display all raw numbers, metrics, item lists, tax splits, and granular details from the context without simplifying."
+            )
+        else: # standard
+            return (
+                "DYNAMIC COMPLEXITY (STANDARD):\n"
+                "- Provide a balanced, professional, and concise explanation.\n"
+                "- Use standard business/technical terms.\n"
+                "- Be direct and avoid excessive wordiness."
+            )
+
+    def _user_memories(self, memories: list[str] | None) -> str:
+        if not memories:
+            return ""
+        return (
+            "USER PROFILE & PAST PREFERENCES:\n"
+            "You MUST follow these facts and formatting preferences established in past sessions:\n"
+            + "\n".join(f"- {m}" for m in memories)
         )

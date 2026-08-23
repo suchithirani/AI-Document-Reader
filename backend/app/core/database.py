@@ -14,7 +14,16 @@ async def connect_to_mongodb() -> None:
     """
     global client, database
 
-    client = AsyncMongoClient(settings.MONGODB_URI)
+    client = AsyncMongoClient(
+        settings.MONGODB_URI,
+        maxPoolSize=50,
+        minPoolSize=0,
+        maxIdleTimeMS=45000,
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=30000,
+        retryWrites=True,
+    )
     database = client[settings.DATABASE_NAME]
 
     print("✅ Connected to MongoDB")

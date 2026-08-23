@@ -64,13 +64,9 @@ class DocumentService:
         self.storage_service = StorageService(db)
 
         self.audit_log_service = AuditLogService(db)
-        self.document_content_service = DocumentContentService(db)
-        self.document_chunk_service = DocumentChunkService(db)
-        self.chunking_service = ChunkingService()
-        self.embedding_service = EmbeddingService(settings.EMBEDDING_PROVIDER)
-        self.ocr_service = OCRService()
+        
         self.response_cache = ResponseCache()
-        self.processing_lock = ProcessingLockService()
+        
 
     async def upload_document(
         self,
@@ -153,6 +149,20 @@ class DocumentService:
             ):
                 page_count = 1
 
+            latest_doc = await self.repository.get_latest_version_by_name(
+                owner_id=str(current_user.id),
+                original_filename=file.filename,
+            )
+
+            if latest_doc is not None:
+                version_group_id = latest_doc.version_group_id or str(latest_doc.id)
+                version = latest_doc.version + 1
+                await self.repository.demote_previous_versions(version_group_id)
+            else:
+                import uuid
+                version_group_id = str(uuid.uuid4())
+                version = 1
+
             document = Document(
                 owner_id=str(current_user.id),
                 filename=filename,
@@ -165,6 +175,9 @@ class DocumentService:
                 file_size=file_size,
                 file_hash=file_hash,
                 status=DocumentStatus.UPLOADED,
+                version=version,
+                version_group_id=version_group_id,
+                is_latest=True,
                 created_at=now,
                 updated_at=now,
             )
@@ -346,6 +359,19 @@ class DocumentService:
         await self.repository.soft_delete(
             document_id
         )
+
+        if document.is_latest:
+            if document.version_group_id:
+                active_versions = await self.repository.get_versions_by_group(
+                    document.version_group_id
+                )
+                if active_versions:
+                    next_latest = active_versions[0]
+                    await self.repository.update(
+                        str(next_latest.id),
+                        {"is_latest": True}
+                    )
+
         await self.response_cache.delete(
             f"documents:{current_user.id}:0:20"
         )
@@ -372,6 +398,41 @@ class DocumentService:
         return {
             "message": "Document deleted successfully."
     }
+
+    async def get_document_versions(
+        self,
+        current_user: User,
+        document_id: str,
+    ) -> list[DocumentResponse]:
+        document = await self.repository.get_document_by_id(document_id)
+        if document is None:
+            raise NotFoundException("Document not found.")
+            
+        if document.owner_id != str(current_user.id):
+            raise ForbiddenException("You do not have access to this document.")
+            
+        if not document.version_group_id:
+            return [
+                DocumentResponse.model_validate(
+                    document.model_dump(
+                        by_alias=True,
+                        exclude={"storage_provider", "storage_path", "deleted_at"}
+                    )
+                )
+            ]
+            
+        versions = await self.repository.get_versions_by_group(
+            document.version_group_id
+        )
+        return [
+            DocumentResponse.model_validate(
+                v.model_dump(
+                    by_alias=True,
+                    exclude={"storage_provider", "storage_path", "deleted_at"}
+                )
+            )
+            for v in versions
+        ]
 
     async def count_documents(
         self,
