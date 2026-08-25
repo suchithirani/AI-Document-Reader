@@ -35,7 +35,7 @@ Conversation:
         response = await self.ai_service.answer_question(
             prompt,
         )
-        summary = response["answer"]  
+        summary = response["answer"]
         await self.ai_usage.log(
             user_id=None,
             session_id=session_id,

@@ -1,14 +1,17 @@
 import logging
+
 from fastapi import Request
 
+from app.common.constants import AuditAction, AuditResource
 from app.common.exceptions.auth import (
+    AccountLockedException,
     BadRequestException,
     ForbiddenException,
     NotFoundException,
     UnauthorizedException,
-    AccountLockedException,
 )
 from app.common.utils.datetime import utc_now
+from app.common.utils.request import get_request_info
 from app.core.config import settings
 from app.core.security import (
     create_access_token,
@@ -19,7 +22,9 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
+from app.modules.audit_logs.service import AuditLogService
 from app.modules.auth.model import User
+from app.modules.auth.refresh_repository import RefreshTokenRepository
 from app.modules.auth.repository import UserRepository
 from app.modules.auth.schema import (
     AuthResponse,
@@ -32,19 +37,13 @@ from app.modules.auth.schema import (
     UserResponse,
     VerifyOtpRequest,
 )
-from app.common.utils.request import get_request_info
-from app.modules.auth.refresh_repository import RefreshTokenRepository
-from app.common.constants import AuditAction, AuditResource
-from app.modules.audit_logs.service import AuditLogService
-from app.services.rate_limit.auth_lockout import (
-    AuthLockoutService,
-)
-
 from app.services.email.queue_service import (
     EmailQueueService,
 )
-
 from app.services.otp.service import OtpService
+from app.services.rate_limit.auth_lockout import (
+    AuthLockoutService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,7 @@ class AuthService:
         http_request: Request,
         request: RegisterRequest,
     ) -> AuthResponse:
-        
+
         existing_user = await self.user_repository.get_by_email(
             request.email
         )
@@ -118,7 +117,7 @@ class AuthService:
             email=created_user.email,
             otp=otp,
         )
-        
+
         return {
             "message": (
                 "Registration successful. "
@@ -254,7 +253,7 @@ class AuthService:
             raise UnauthorizedException(
                 "Refresh token required."
             )
-        
+
 
         user = await self.user_repository.get_by_id(
             payload["sub"]
@@ -418,10 +417,10 @@ class AuthService:
             )
 
             raise BadRequestException(
-                (
+
                     "OTP already sent. "
                     f"Try again in {retry_after} seconds."
-                )
+
             )
         otp = await self.otp_service.generate(
             request.identifier,
@@ -513,12 +512,12 @@ class AuthService:
                 request.new_password,
             ),
         )
-        
+
 
         await self.refresh_repository.revoke_all_user_tokens(
             str(user.id),
         )
-        
+
 
         ip_address, user_agent = get_request_info(
             http_request,
@@ -532,7 +531,7 @@ class AuthService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
-        
+
 
         await self.email_queue.send_password_changed_email(
             user.email,

@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
+
 from pydantic import BaseModel, ConfigDict, Field
+
 
 class DocumentCollection(BaseModel):
     model_config = ConfigDict(

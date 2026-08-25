@@ -1,8 +1,8 @@
 import re
 
+from app.common.constants import QueryIntent, QueryScope
 from app.services.query_analysis.intent import QueryIntentDetector
 from app.services.query_analysis.models import QueryAnalysis
-from app.common.constants import QueryIntent, QueryScope
 
 
 class QueryAnalyzer:

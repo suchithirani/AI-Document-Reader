@@ -1,4 +1,3 @@
-import time
 
 from app.core.config import settings
 from app.modules.analytics.model import AIUsageLog

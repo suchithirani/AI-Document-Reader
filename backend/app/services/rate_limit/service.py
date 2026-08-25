@@ -1,8 +1,7 @@
-from app.core.redis import redis_client
-
 from app.common.exceptions.auth import (
     RateLimitException,
 )
+from app.core.redis import redis_client
 
 
 class RateLimitService:

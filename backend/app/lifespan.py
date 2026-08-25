@@ -47,7 +47,7 @@ async def lifespan(
     # Redis
     await redis_client.ping()
 
-    
+
     logger.info(
         "Redis connected successfully."
     )

@@ -1,7 +1,5 @@
-from app.core.config import settings
 from app.services.ai.service import AIService
 from app.services.analytics.ai_usage import AIUsageService
-
 
 
 class TitleGenerationService:
@@ -9,7 +7,7 @@ class TitleGenerationService:
     def __init__(self,db):
 
         self.ai_service = AIService()
-        self.ai_usage = AIUsageService(db)  
+        self.ai_usage = AIUsageService(db)
 
     async def generate_title(
         self,

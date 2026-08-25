@@ -322,12 +322,7 @@ class HybridSearchService:
         elif sentence_count == 1:
             score += 0.03
 
-        unique_words = len(
-            set(
-                word.lower()
-                for word in words
-            )
-        )
+        unique_words = len({word.lower() for word in words})
 
         vocabulary_ratio = (
             unique_words / word_count

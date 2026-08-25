@@ -1,33 +1,30 @@
+import asyncio
 import logging
 import time
-import asyncio
 from uuid import uuid4
 
-from app.services.storage.service import StorageService
-
-from app.modules.document_chunks.service import DocumentChunkService
-from app.modules.document_contents.service import DocumentContentService
-from app.modules.documents.repository import DocumentRepository
-from app.ocr.service import OCRService
-from app.services.chunking.service import ChunkingService
-from app.services.embedding.service import EmbeddingService
 from app.common.constants import AuditAction, AuditResource, DocumentStatus
 from app.common.exceptions.auth import BadRequestException, BaseAppException, NotFoundException
+from app.common.exceptions.document import DocumentProcessingException
+from app.common.utils.datetime import utc_now
 from app.core.config import settings
 from app.modules.audit_logs.service import AuditLogService
-from app.common.exceptions.document import DocumentProcessingException
-from app.workers.process_lock import (
-    WorkerProcessingLockService,
-)
+from app.modules.document_chunks.service import DocumentChunkService
+from app.modules.document_contents.service import DocumentContentService
+from app.modules.document_images.service import DocumentImageService
 from app.modules.documents.content_repository import (
     ProcessedContentRepository,
 )
-from app.common.utils.datetime import utc_now
-from app.modules.document_images.service import DocumentImageService
-from app.services.document_images.pdf_image_extractor import PDFImageExtractor
+from app.modules.documents.repository import DocumentRepository
+from app.ocr.service import OCRService
 from app.services.cache.response import ResponseCache
-
-
+from app.services.chunking.service import ChunkingService
+from app.services.document_images.pdf_image_extractor import PDFImageExtractor
+from app.services.embedding.service import EmbeddingService
+from app.services.storage.service import StorageService
+from app.workers.process_lock import (
+    WorkerProcessingLockService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +121,7 @@ class DocumentProcessingService:
                         document_id,
                         DocumentStatus.FAILED,
                     )
-                    
+
                     await self.response_cache.delete(
                         f"documents:{owner_id}:0:20"
                     )
@@ -211,7 +208,7 @@ class DocumentProcessingService:
                     "updated_at": utc_now(),
                     }
                 )
-            
+
 
             await self._finish_document(
                 owner_id,

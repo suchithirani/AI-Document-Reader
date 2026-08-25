@@ -1,12 +1,11 @@
-import asyncio
 
 from celery.signals import worker_shutdown
 
-from app.workers.database import (
-    close_worker_database,
-)
 from app.workers.base import (
     get_worker_loop,
+)
+from app.workers.database import (
+    close_worker_database,
 )
 
 

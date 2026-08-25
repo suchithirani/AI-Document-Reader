@@ -2,7 +2,7 @@ from app.core.redis import redis_client
 
 
 class ProcessingLockService:
-    
+
 
     async def acquire(
         self,

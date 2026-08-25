@@ -14,7 +14,7 @@ async def logging_middleware(
 
     status_code = 500
     response = None
-    
+
 
     try:
         response = await call_next(request)

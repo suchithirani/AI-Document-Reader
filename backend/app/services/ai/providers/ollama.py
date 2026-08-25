@@ -1,8 +1,8 @@
 import time
+
 import httpx
 
 from app.common.exceptions.ai import (
-    AIAuthenticationException,
     AIResponseException,
 )
 from app.core.config import settings
@@ -61,7 +61,7 @@ class OllamaAIService:
             ) * 1000
 
             answer = data.get("message", {}).get("content", "")
-            
+
             prompt_tokens = data.get("prompt_eval_count", 0)
             completion_tokens = data.get("eval_count", 0)
             total_tokens = prompt_tokens + completion_tokens
@@ -96,7 +96,7 @@ class OllamaAIService:
         prompt: str,
     ):
         import json
-        
+
         try:
             payload = {
                 "model": self.model,
@@ -115,12 +115,12 @@ class OllamaAIService:
                     f"{self.base_url}/api/chat",
                     json=payload,
                 ) as response:
-                    
+
                     if response.status_code != 200:
                         raise AIResponseException(
                             f"Ollama returned status code {response.status_code}"
                         )
-                    
+
                     async for line in response.aiter_lines():
                         if line:
                             data = json.loads(line)

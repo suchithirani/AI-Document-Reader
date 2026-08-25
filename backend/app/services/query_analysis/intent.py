@@ -14,7 +14,7 @@ class QueryIntentDetector:
 
         if self._is_toc(normalized):
             return QueryIntent.TOC
-        
+
         if self._is_comparison(normalized):
             return QueryIntent.COMPARISON
 

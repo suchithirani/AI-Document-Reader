@@ -1,7 +1,7 @@
 from celery import Celery
-import app.workers.signal
-from app.core.config import settings
+
 from app.core.beat_schedule import BEAT_SCHEDULE
+from app.core.config import settings
 
 celery_app = Celery(
     "ai_document_reader",

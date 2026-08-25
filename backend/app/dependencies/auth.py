@@ -1,8 +1,5 @@
-import token
 from fastapi import Depends, Request
-from fastapi import Depends
-from fastapi.security import HTTPBearer
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.common.exceptions.auth import (
     NotFoundException,
@@ -11,7 +8,6 @@ from app.common.exceptions.auth import (
 from app.core.database import get_database
 from app.core.security import decode_token
 from app.modules.auth.repository import UserRepository
-
 
 bearer_scheme = HTTPBearer()
 
@@ -42,7 +38,7 @@ async def get_current_user(
 
     if not user.is_active:
         raise UnauthorizedException("User is inactive")
-    
+
     request.state.user = user
     return user
 

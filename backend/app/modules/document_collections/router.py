@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Depends, status
+
 from app.common.response import success_response
 from app.dependencies.auth import get_current_user
+from app.dependencies.rate_limit import rate_limit
 from app.dependencies.service import get_database
 from app.modules.auth.model import User
 from app.modules.document_collections.schema import (
     CreateDocumentCollectionRequest,
-    UpdateDocumentCollectionRequest,
     DocumentCollectionResponse,
+    UpdateDocumentCollectionRequest,
 )
 from app.modules.document_collections.service import DocumentCollectionService
-from app.dependencies.rate_limit import rate_limit
 
 document_collection_router = APIRouter(
     prefix="/document-collections",
@@ -35,7 +36,7 @@ async def create_collection(
         description=body.description,
         document_ids=body.document_ids,
     )
-    
+
     response_data = DocumentCollectionResponse(
         id=str(result.id),
         owner_id=result.owner_id,
@@ -46,7 +47,7 @@ async def create_collection(
         created_at=result.created_at.isoformat(),
         updated_at=result.updated_at.isoformat(),
     )
-    
+
     return success_response(
         message="Collection created successfully.",
         data=response_data.model_dump(),
@@ -62,7 +63,7 @@ async def get_collections(
     service: DocumentCollectionService = Depends(get_collection_service),
 ):
     collections = await service.get_collections(current_user.id)
-    
+
     results = [
         DocumentCollectionResponse(
             id=str(col.id),
@@ -76,7 +77,7 @@ async def get_collections(
         ).model_dump()
         for col in collections
     ]
-    
+
     return success_response(
         message="Collections retrieved successfully.",
         data=results,
@@ -92,7 +93,7 @@ async def get_collection(
     service: DocumentCollectionService = Depends(get_collection_service),
 ):
     col = await service.get_collection(current_user.id, collection_id)
-    
+
     response_data = DocumentCollectionResponse(
         id=str(col.id),
         owner_id=col.owner_id,
@@ -103,7 +104,7 @@ async def get_collection(
         created_at=col.created_at.isoformat(),
         updated_at=col.updated_at.isoformat(),
     )
-    
+
     return success_response(
         message="Collection retrieved successfully.",
         data=response_data.model_dump(),
@@ -126,7 +127,7 @@ async def update_collection(
         description=body.description,
         document_ids=body.document_ids,
     )
-    
+
     response_data = DocumentCollectionResponse(
         id=str(col.id),
         owner_id=col.owner_id,
@@ -137,7 +138,7 @@ async def update_collection(
         created_at=col.created_at.isoformat(),
         updated_at=col.updated_at.isoformat(),
     )
-    
+
     return success_response(
         message="Collection updated successfully.",
         data=response_data.model_dump(),
@@ -153,7 +154,7 @@ async def delete_collection(
     service: DocumentCollectionService = Depends(get_collection_service),
 ):
     await service.delete_collection(current_user.id, collection_id)
-    
+
     return success_response(
         message="Collection deleted successfully.",
     )

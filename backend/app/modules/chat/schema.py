@@ -56,7 +56,7 @@ class SourceResponse(BaseModel):
 
     score: float
 
-    
+
 
 
 class ChatMessageResponse(BaseModel):

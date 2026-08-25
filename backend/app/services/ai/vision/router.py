@@ -8,7 +8,6 @@ from app.common.exceptions.ai import (
 )
 from app.services.ai.vision.provider import VisionProvider
 
-
 logger = logging.getLogger(__name__)
 
 

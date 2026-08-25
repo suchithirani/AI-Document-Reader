@@ -1,12 +1,12 @@
 import asyncio
 from collections import defaultdict
 
-from app.services.ai.vision.gemini import GeminiVision
-from app.services.ai.vision.groq import GroqVision
-from app.services.ai.service import AIService
 from app.services.ai.prompts.vision_prompt import (
     VISION_ANALYSIS_PROMPT,
 )
+from app.services.ai.service import AIService
+from app.services.ai.vision.gemini import GeminiVision
+from app.services.ai.vision.groq import GroqVision
 from app.services.ai.vision.router import VisionRouter
 
 
@@ -165,7 +165,7 @@ Start directly with the requested answer.
 
             return result or ""
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
 
             print(
                 "Vision request timeout:",

@@ -13,7 +13,7 @@ class RegisterRequest(BaseSchema):
     min_length=8,
     max_length=64,
 )
-    
+
 class LoginRequest(BaseSchema):
     email: EmailStr
 

@@ -1,7 +1,15 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
+from qdrant_client.http.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
 
 from app.core.config import settings
 
@@ -17,19 +25,19 @@ class QdrantRepository:
                 _qdrant_client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY)
             else:
                 _qdrant_client = QdrantClient(path=settings.QDRANT_PATH)
-        
+
         self.client = _qdrant_client
-        
+
         self.collection_name = settings.QDRANT_COLLECTION_NAME + "_v2"
         self.vector_size = 768  # Size of embeddings for Nomic/Gemini
-        
+
         self._ensure_collection_exists()
 
     def _ensure_collection_exists(self):
         try:
             collections = self.client.get_collections().collections
             collection_names = [col.name for col in collections]
-            
+
             if self.collection_name not in collection_names:
                 logger.info(f"Creating Qdrant collection '{self.collection_name}'")
                 self.client.create_collection(
@@ -39,7 +47,7 @@ class QdrantRepository:
         except Exception as e:
             logger.error(f"Error initializing Qdrant collection: {e}")
 
-    def upsert_chunks(self, chunks: List[Any], owner_id: str):
+    def upsert_chunks(self, chunks: list[Any], owner_id: str):
         """
         Takes a list of Chunk models (from MongoDB) and upserts them to Qdrant.
         """
@@ -50,7 +58,7 @@ class QdrantRepository:
         for chunk in chunks:
             if not chunk.embedding:
                 continue
-                
+
             payload = {
                 "owner_id": owner_id,
                 "document_id": chunk.document_id,
@@ -60,13 +68,13 @@ class QdrantRepository:
                 "mongo_id": str(chunk.id),
                 "text": chunk.text,
             }
-            
-            # Use the string hex ID directly if Qdrant requires UUID or int. 
+
+            # Use the string hex ID directly if Qdrant requires UUID or int.
             # We'll use a string UUID format or just auto-generate a UUID from mongo_id.
             import uuid
             # Ensure a valid UUID is created from the 24-char hex string of mongo_id
             point_id = str(uuid.UUID(chunk.id.zfill(32)))
-            
+
             points.append(
                 PointStruct(
                     id=point_id,
@@ -81,7 +89,7 @@ class QdrantRepository:
                 points=points
             )
 
-    def search(self, query_embedding: List[float], owner_id: str, document_ids: List[str] = None, top_k: int = 5) -> List[Dict]:
+    def search(self, query_embedding: list[float], owner_id: str, document_ids: list[str] = None, top_k: int = 5) -> list[dict]:
         """
         Searches Qdrant using the embedding, scoped strictly to the owner_id and optionally document_ids.
         """
@@ -92,7 +100,7 @@ class QdrantRepository:
                     match=MatchValue(value=owner_id)
                 )
             ]
-            
+
             if document_ids:
                 from qdrant_client.http.models import MatchAny
                 must_filters.append(
@@ -110,14 +118,14 @@ class QdrantRepository:
                 ),
                 limit=top_k * 3,  # Fetch extra to match old logic and allow reranking
             )
-            
+
             results = []
             for hit in search_result.points:
                 results.append({
                     "score": hit.score,
                     "chunk": hit.payload,
                 })
-                
+
             return results
         except Exception as e:
             logger.error(f"Qdrant search error: {e}")

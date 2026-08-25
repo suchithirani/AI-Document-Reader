@@ -1,3 +1,4 @@
+import logging
 from email.message import EmailMessage
 
 import aiosmtplib
@@ -5,8 +6,6 @@ import aiosmtplib
 from app.common.exceptions.email import EmailException
 from app.core.config import settings
 from app.services.email.schema import EmailRequest
-
-import logging
 
 logger = logging.getLogger(__name__)
 class EmailService:
@@ -46,4 +45,3 @@ class EmailService:
             raise EmailException(
                 str(exception)
             ) from exception
-                

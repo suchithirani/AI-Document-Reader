@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
+
 from app.common.base_schema import BaseSchema
+
 
 class CreateDocumentCollectionRequest(BaseSchema):
     name: str = Field(

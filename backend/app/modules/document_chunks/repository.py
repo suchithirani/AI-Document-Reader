@@ -2,10 +2,10 @@ from app.common.constants import CollectionName
 from app.modules.document_chunks.model import (
     DocumentChunk,
 )
+from app.modules.documents.repository import DocumentRepository
 from app.repositories.base_repository import (
     BaseRepository,
 )
-from app.modules.documents.repository import DocumentRepository
 
 
 class DocumentChunkRepository(
@@ -35,7 +35,7 @@ class DocumentChunkRepository(
         self,
         document_id: str | list[str],
     ) -> list[DocumentChunk]:
-        
+
         if isinstance(document_id, str):
             document_id = [document_id]
 
@@ -57,7 +57,7 @@ class DocumentChunkRepository(
         ]
 
     async def update_embedding(
-      
+
         self,
         document_id: str,
         page_number: int,
@@ -75,7 +75,7 @@ class DocumentChunkRepository(
                 "embedding": embedding,
             },
         )
-        
+
     async def delete_document_chunks(
         self,
         document_id: str,

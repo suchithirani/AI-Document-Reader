@@ -2,6 +2,7 @@ from app.common.constants import CollectionName
 from app.modules.document_collections.model import DocumentCollection
 from app.repositories.base_repository import BaseRepository
 
+
 class DocumentCollectionRepository(BaseRepository):
 
     def __init__(self, db):

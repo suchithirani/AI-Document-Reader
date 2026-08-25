@@ -1,20 +1,20 @@
 from fastapi import APIRouter, Depends
 
-from app.dependencies.service import get_database
 from app.common.response import success_response
+from app.dependencies.rate_limit import rate_limit
+from app.dependencies.service import get_database
 from app.modules.search.schema import (
     AskQuestionRequest,
 )
 from app.modules.search.service import (
     SearchService,
 )
-from app.dependencies.rate_limit import rate_limit
 
 search_router = APIRouter(
     prefix="/search",
     tags=["Search"],
 )
-    
+
 
 @search_router.post("/",dependencies=[rate_limit(limit=10, window=60)],)
 async def search_document(

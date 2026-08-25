@@ -1,6 +1,6 @@
 from app.common.exceptions.auth import (
-    UnauthorizedException,
     InternalServerException,
+    UnauthorizedException,
 )
 
 

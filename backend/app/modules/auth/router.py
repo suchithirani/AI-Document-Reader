@@ -1,23 +1,20 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request
 
-from app.common.base_schema import MessageResponse
-from app.common.response import created_response, success_response
+from app.common.response import success_response
 from app.dependencies.auth import get_current_user
+from app.dependencies.rate_limit import rate_limit
 from app.dependencies.service import get_auth_service
 from app.modules.auth.model import User
 from app.modules.auth.schema import (
-    AuthResponse,
     ForgotPasswordRequest,
     LoginRequest,
     RefreshTokenRequest,
     RegisterRequest,
     ResetPasswordRequest,
     SendOtpRequest,
-    UserResponse,
     VerifyOtpRequest,
 )
 from app.modules.auth.service import AuthService
-from app.dependencies.rate_limit import rate_limit
 
 auth_router = APIRouter(
     prefix="/auth",

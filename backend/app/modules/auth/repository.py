@@ -1,7 +1,7 @@
-from app.modules.auth.model import User
-from pymongo import ReturnDocument
-from app.common.utils.datetime import utc_now
+
 from app.common.constants import CollectionName
+from app.common.utils.datetime import utc_now
+from app.modules.auth.model import User
 from app.repositories.base_repository import BaseRepository
 
 
@@ -97,7 +97,7 @@ class UserRepository(BaseRepository):
             return None
 
         return User.model_validate(user)
-    
+
     async def update_profile_picture(self, user_id: str, profile_picture: str):
         user = await self.update(
             user_id,

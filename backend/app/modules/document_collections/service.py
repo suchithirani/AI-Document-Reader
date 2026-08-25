@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+
 from app.common.exceptions.auth import (
     ForbiddenException,
     NotFoundException,

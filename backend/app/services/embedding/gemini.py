@@ -1,9 +1,9 @@
 from google import genai
 
-from app.core.config import settings
 from app.common.exceptions.ai import (
     EmbeddingException,
 )
+from app.core.config import settings
 
 
 class GeminiEmbedding:
@@ -35,7 +35,7 @@ class GeminiEmbedding:
             raise EmbeddingException(
                 str(exception)
             ) from exception
-        
+
     async def create_embeddings(
         self,
         texts: list[str],

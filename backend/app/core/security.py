@@ -1,13 +1,13 @@
-from datetime import UTC, datetime, timedelta
 import hashlib
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
 from passlib.context import CryptContext
 
 from app.common.constants import ACCESS_TOKEN_TYPE, REFRESH_TOKEN_TYPE
-from app.core.config import settings
 from app.common.exceptions.auth import UnauthorizedException
+from app.core.config import settings
 
 pwd_context = CryptContext(
     schemes=["bcrypt"],
@@ -102,10 +102,10 @@ def decode_token(token: str) -> dict[str, Any]:
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
         )
-    except jwt.ExpiredSignatureError:
-        raise UnauthorizedException("Token has expired.")
-    except jwt.InvalidTokenError:
-        raise UnauthorizedException("Invalid token.")
+    except jwt.ExpiredSignatureError as err:
+        raise UnauthorizedException("Token has expired.") from err
+    except jwt.InvalidTokenError as err:
+        raise UnauthorizedException("Invalid token.") from err
 
 
 def hash_refresh_token(token: str) -> str:

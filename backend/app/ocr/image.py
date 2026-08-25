@@ -1,14 +1,16 @@
+from pathlib import Path
+
+import pytesseract
 from PIL import (
     Image,
     ImageEnhance,
     ImageFilter,
     ImageOps,
 )
-from pathlib import Path
+
 from app.common.exceptions.document import (
     OCRException,
 )
-import pytesseract
 
 
 class ImageOCR:

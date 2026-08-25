@@ -1,7 +1,7 @@
+from app.core.config import settings
 from app.core.redis import redis_client
 from app.services.otp.generator import OtpGenerator
 from app.services.otp.hasher import OtpHasher
-from app.core.config import settings
 
 
 class OtpService:
@@ -18,12 +18,12 @@ class OtpService:
     ) -> str:
 
         return f"{settings.OTP_PREFIX}:{identifier}"
-    
+
     def _cooldown_key(
             self,
             identifier: str,
         ) -> str:
-    
+
             return (
                 f"{settings.OTP_COOLDOWN}:{identifier}"
             )
@@ -45,7 +45,7 @@ class OtpService:
             ex=settings.OTP_TTL,
         )
 
-        return otp  
+        return otp
 
     async def verify_and_delete(
         self,
@@ -114,7 +114,7 @@ class OtpService:
             == self.otp_hasher.hash(
                 otp,
             )
-        )    
+        )
 
     async def delete(
         self,

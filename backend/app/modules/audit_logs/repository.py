@@ -1,9 +1,9 @@
 from datetime import timedelta
 
 from app.common.constants import CollectionName
+from app.common.utils.datetime import utc_now
 from app.modules.audit_logs.model import AuditLog
 from app.repositories.base_repository import BaseRepository
-from app.common.utils.datetime import utc_now
 
 
 class AuditLogRepository(BaseRepository):

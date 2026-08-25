@@ -1,7 +1,7 @@
 from fastapi import Depends
 
 from app.common.constants import UserRole
-from backend.app.common.exceptions.auth import ForbiddenException
+from app.common.exceptions.auth import ForbiddenException
 from app.dependencies.auth import get_current_user
 
 
@@ -16,7 +16,8 @@ class RoleChecker:
         self,
         current_user=Depends(get_current_user),
     ):
-        if current_user["role"] not in self.allowed_roles:
+        user_role = current_user.role if hasattr(current_user, "role") else current_user.get("role")
+        if user_role not in self.allowed_roles:
             raise ForbiddenException(
                 "You don't have permission to access this resource."
             )

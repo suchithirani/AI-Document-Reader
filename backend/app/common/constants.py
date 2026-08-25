@@ -109,7 +109,7 @@ class DocumentStatus(StrEnum):
     EMBEDDING = "EMBEDDING"
     DELETED = "DELETED"
     QUEUED = "QUEUED"
-    
+
 DOCUMENT_PROGRESS = {
     DocumentStatus.UPLOADED: 0,
     DocumentStatus.QUEUED: 5,

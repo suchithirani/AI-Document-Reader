@@ -1,10 +1,12 @@
 from app.core.config import settings
-
 from app.services.ai.providers.gemini import (
     GeminiAIService,
 )
 from app.services.ai.providers.groq import (
     GroqAIService,
+)
+from app.services.ai.providers.ollama import (
+    OllamaAIService,
 )
 from app.services.ai.vision.gemini import (
     GeminiVision,
@@ -12,18 +14,13 @@ from app.services.ai.vision.gemini import (
 from app.services.ai.vision.groq import (
     GroqVision,
 )
+from app.services.ai.vision.ollama import (
+    OllamaVision,
+)
 from app.services.ai.vision.router import (
     VisionRouter,
 )
 
-
-from app.services.ai.providers.ollama import (
-    OllamaAIService,
-)
-
-from app.services.ai.vision.ollama import (
-    OllamaVision,
-)
 
 class AIService:
 
@@ -57,10 +54,10 @@ class AIService:
     ):
         import logging
         logger = logging.getLogger(__name__)
-        
+
         providers = [self.provider] + self.fallback_providers
         last_exc = None
-        
+
         for prov in providers:
             try:
                 import inspect
@@ -81,7 +78,7 @@ class AIService:
                 )
                 last_exc = e
                 continue
-                
+
         raise last_exc
 
     async def answer_question_stream(
@@ -90,17 +87,17 @@ class AIService:
     ):
         import logging
         logger = logging.getLogger(__name__)
-        
+
         providers = [self.provider] + self.fallback_providers
         last_exc = None
-        
+
         for prov in providers:
             try:
                 gen = prov.answer_question_stream(prompt)
                 # Fetch first chunk to verify it initializes successfully (catches 429)
                 first_chunk = await gen.__anext__()
                 yield first_chunk
-                
+
                 async for chunk in gen:
                     yield chunk
                 return
@@ -114,7 +111,7 @@ class AIService:
                 )
                 last_exc = e
                 continue
-                
+
         raise last_exc
 
     async def analyze_images(

@@ -65,11 +65,11 @@ class Settings(BaseSettings):
     QDRANT_PATH: str = Field(default="./storage/qdrant")
     QDRANT_API_KEY: str = Field(default="")
     QDRANT_COLLECTION_NAME: str = Field(default="document_chunks")
-    
+
     # ==========================
     # AI
     # ==========================
-    
+
     GEMINI_API_KEY: str = Field(...)
 
     # Embedding

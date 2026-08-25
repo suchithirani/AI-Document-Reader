@@ -2,15 +2,16 @@ from fastapi import Depends
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.database import get_database
-from app.modules.documents.service import DocumentService
+from app.modules.analytics.service import AnalyticsService
 from app.modules.auth.service import AuthService
+from app.modules.chat.service import ChatService
+from app.modules.document_collections.service import DocumentCollectionService
 from app.modules.document_contents.service import (
     DocumentContentService,
 )
-from app.ocr.service import OCRService
+from app.modules.documents.service import DocumentService
 from app.modules.search.service import SearchService
-from app.modules.chat.service import ChatService
-from app.modules.analytics.service import AnalyticsService
+
 
 def get_auth_service(
     db: AsyncDatabase = Depends(get_database),
@@ -41,8 +42,6 @@ def get_analytics_service(
     db = Depends(get_database),
 ):
     return AnalyticsService(db)
-
-from app.modules.document_collections.service import DocumentCollectionService
 
 def get_document_collection_service(
     db=Depends(get_database),

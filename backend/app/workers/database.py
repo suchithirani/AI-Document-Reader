@@ -2,7 +2,6 @@ from pymongo import AsyncMongoClient
 
 from app.core.config import settings
 
-
 _client: AsyncMongoClient | None = None
 
 

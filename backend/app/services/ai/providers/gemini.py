@@ -152,7 +152,7 @@ class GeminiAIService:
                 contents=prompt,
                 config=config,
             )
-            
+
             async for chunk in response_stream:
                 if chunk.text:
                     yield chunk.text

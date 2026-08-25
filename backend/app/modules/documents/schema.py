@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
-from app.common.constants import DocumentStatus
 from app.common.base_schema import BaseSchema
+from app.common.constants import DocumentStatus
 
 
 class DocumentResponse(BaseSchema):
@@ -26,7 +26,7 @@ class DocumentResponse(BaseSchema):
     file_size: int
 
     file_hash: str | None = None
-    
+
     page_count: int | None = None
 
     status: DocumentStatus
@@ -54,7 +54,7 @@ class DocumentResponse(BaseSchema):
             score = data.get("ocr_quality_score")
             if score is None:
                 score = data.get("ocrQualityScore")
-            
+
             if score is not None:
                 from app.common.constants import OCR_QUALITY_WARNING_THRESHOLD
                 data["ocr_quality_warning"] = score < OCR_QUALITY_WARNING_THRESHOLD

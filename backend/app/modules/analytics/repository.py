@@ -31,9 +31,9 @@ class AnalyticsRepository(
         )
 
     async def get_dashboard(self, days: int = 7, owner_id: str | None = None):
-        from datetime import datetime, timedelta, UTC
+        from datetime import UTC, datetime, timedelta
         cutoff = datetime.now(UTC) - timedelta(days=days)
-        
+
         match_stage = {
             "created_at": {"$gte": cutoff}
         }
@@ -83,7 +83,7 @@ class AnalyticsRepository(
         days: int = 7,
         owner_id: str | None = None,
     ) -> int:
-        from datetime import datetime, timedelta, UTC
+        from datetime import UTC, datetime, timedelta
         cutoff = datetime.now(UTC) - timedelta(days=days)
         filters = {
             "endpoint": endpoint,
@@ -95,15 +95,15 @@ class AnalyticsRepository(
         return await self.count(filters)
 
     async def get_daily_usage(self, days: int = 7, owner_id: str | None = None) -> list[dict]:
-        from datetime import datetime, timedelta, UTC
+        from datetime import UTC, datetime, timedelta
         cutoff = datetime.now(UTC) - timedelta(days=days)
-        
+
         match_stage = {
             "created_at": {"$gte": cutoff}
         }
         if owner_id:
             match_stage["user_id"] = owner_id
-            
+
         pipeline = [
             {"$match": match_stage},
             {
@@ -133,7 +133,7 @@ class AnalyticsRepository(
             },
             {"$sort": {"_id": 1}}
         ]
-        
+
         cursor = await self.collection.aggregate(pipeline)
         results = await cursor.to_list(length=100)
         return [
@@ -149,15 +149,15 @@ class AnalyticsRepository(
         ]
 
     async def get_model_splits(self, days: int = 7, owner_id: str | None = None) -> list[dict]:
-        from datetime import datetime, timedelta, UTC
+        from datetime import UTC, datetime, timedelta
         cutoff = datetime.now(UTC) - timedelta(days=days)
-        
+
         match_stage = {
             "created_at": {"$gte": cutoff}
         }
         if owner_id:
             match_stage["user_id"] = owner_id
-            
+
         pipeline = [
             {"$match": match_stage},
             {
@@ -171,7 +171,7 @@ class AnalyticsRepository(
                 }
             }
         ]
-        
+
         cursor = await self.collection.aggregate(pipeline)
         results = await cursor.to_list(length=50)
         return [

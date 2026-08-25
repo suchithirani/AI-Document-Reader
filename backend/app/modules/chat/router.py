@@ -1,7 +1,11 @@
+import json
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 
 from app.common.response import success_response
 from app.dependencies.auth import get_current_user
+from app.dependencies.rate_limit import rate_limit
 from app.dependencies.service import get_chat_service
 from app.modules.auth.model import User
 from app.modules.chat.schema import (
@@ -10,8 +14,6 @@ from app.modules.chat.schema import (
     UpdateChatSessionRequest,
 )
 from app.modules.chat.service import ChatService
-from app.dependencies.rate_limit import rate_limit
-
 
 chat_router = APIRouter(
     prefix="/chat",
@@ -108,14 +110,11 @@ async def send_message(
         question=body.question,
         detail_level=body.detail_level,
     )
-    
+
     return success_response(
         message="Message sent successfully.",
         data=result,
     )
-
-from fastapi.responses import StreamingResponse
-import json
 
 @chat_router.post("/sessions/{session_id}/messages/stream", dependencies=[rate_limit(limit=30, window=60)])
 async def send_message_stream(

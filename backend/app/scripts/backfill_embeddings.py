@@ -2,10 +2,9 @@
 
 import asyncio
 
+from app.modules.document_chunks.repository import DocumentChunkRepository
 from app.services.embedding.gemini import GeminiEmbedding
 from app.workers.database import get_worker_database
-from app.modules.document_chunks.repository import DocumentChunkRepository
-
 
 BATCH_SIZE = 25
 BATCH_DELAY_SECONDS = 65

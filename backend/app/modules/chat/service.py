@@ -1,33 +1,29 @@
 from datetime import UTC, datetime
-from unittest import result
 
-from app.common.constants import ChatRole
+from app.common.constants import (
+    ChatRole,
+    DocumentStatus,
+)
+from app.common.exceptions.auth import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
+from app.common.exceptions.document import (
+    DocumentNotFoundException,
+)
+from app.modules.chat.chat_session_repository import ChatSessionDocumentRepository
 from app.modules.chat.repository import (
     ChatRepository,
-)
-from app.modules.search.service import (
-    SearchService,
 )
 from app.modules.documents.repository import (
     DocumentRepository,
 )
-
-from app.common.exceptions.document import (
-    DocumentNotFoundException,
+from app.modules.search.service import (
+    SearchService,
 )
-
-from app.common.exceptions.auth import (
-    ForbiddenException,
-    BadRequestException,
-    NotFoundException,
-)
-
-from app.common.constants import (
-    DocumentStatus,
-)
-from app.modules.chat.chat_session_repository import ChatSessionDocumentRepository
-from app.workers.chat_tasks import generate_chat_title_task
 from app.workers.chat_summary_task import generate_summary_task
+from app.workers.chat_tasks import generate_chat_title_task
 
 
 class ChatService:
@@ -376,7 +372,6 @@ class ChatService:
             limit=4,
         )
 
-        import json
         sources = None
         async for chunk in self.search_service.search_stream(
             owner_id=owner_id,
@@ -407,7 +402,7 @@ class ChatService:
                 messages = await self.repository.get_messages(session_id)
                 if len(messages) % 10 == 0:
                     generate_summary_task.delay(session_id=session_id)
-                
+
                 if not session.title_generated:
                     await self.repository.mark_title_generated(session_id)
                     generate_chat_title_task.delay(
@@ -415,7 +410,7 @@ class ChatService:
                         question=question,
                         answer=answer,
                     )
-                
+
                 if len(messages) == 1 or len(messages) % 5 == 0:
                     from app.workers.ai_tasks import update_user_memory_task
                     update_user_memory_task.delay(

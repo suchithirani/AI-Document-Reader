@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any
+from typing import Any
 
 from app.repositories.qdrant_repository import QdrantRepository
 
@@ -12,11 +12,11 @@ class VectorSearchService:
 
     def search(
         self,
-        query_embedding: List[float],
+        query_embedding: list[float],
         owner_id: str,
-        document_ids: List[str] = None,
+        document_ids: list[str] = None,
         top_k: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Uses Qdrant to find the most similar chunks based on the embedding.
         Filters strictly by the user's owner_id and optionally document_ids.
@@ -27,7 +27,7 @@ class VectorSearchService:
             document_ids=document_ids,
             top_k=top_k
         )
-        
+
         from types import SimpleNamespace
 
         scored_chunks = []

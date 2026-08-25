@@ -1,8 +1,9 @@
 from app.common.exceptions.auth import (
     UnauthorizedException,
 )
-from app.core.redis import redis_client
 from app.core.config import settings
+from app.core.redis import redis_client
+
 
 class AuthLockoutService:
 

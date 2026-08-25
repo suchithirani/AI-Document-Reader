@@ -10,7 +10,6 @@ from app.modules.analytics.service import (
 )
 from app.modules.auth.model import User
 
-
 analytics_router = APIRouter(
     prefix="/analytics",
     tags=["Analytics"],

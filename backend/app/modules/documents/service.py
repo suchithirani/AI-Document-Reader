@@ -1,60 +1,48 @@
 import hashlib
+from pathlib import Path
+
+from fastapi import Request, UploadFile
 from fastapi.responses import FileResponse
 
-from app.modules.documents.repository import (
-    DocumentRepository,
-)
-from app.workers.document_tasks import (
-    process_documents_batch_task,
-)
-from app.common.exceptions.auth import BaseAppException
-from app.services.embedding.service import (
-    EmbeddingService,
-)
-
-from app.modules.document_chunks.service import (
-    DocumentChunkService,
-)
-from app.services.chunking.service import (
-    ChunkingService,
-)
-from app.services.storage.service import (
-    StorageService,
-)
-from app.modules.audit_logs.service import (
-    AuditLogService,
-)
-from pathlib import Path
-from app.modules.document_contents.service import (
-    DocumentContentService,
-)
-from fastapi import Request, UploadFile
 from app.common.constants import (
     AuditAction,
     AuditResource,
     DocumentStatus,
 )
-from app.common.utils.request import get_request_info
-from app.common.exceptions.auth import BadRequestException, ForbiddenException, NotFoundException
+from app.common.exceptions.auth import (
+    BadRequestException,
+    ForbiddenException,
+    NotFoundException,
+)
 from app.common.utils.datetime import utc_now
+from app.common.utils.pdf import get_pdf_page_count
+from app.common.utils.request import get_request_info
 from app.common.validators import (
     validate_content_type,
     validate_file_extension,
     validate_file_size,
-    validate_filename,
 )
 from app.core.config import settings
+from app.modules.audit_logs.service import (
+    AuditLogService,
+)
 from app.modules.auth.model import User
 from app.modules.documents.model import Document
+from app.modules.documents.repository import (
+    DocumentRepository,
+)
 from app.modules.documents.schema import (
     DocumentResponse,
     UploadDocumentResponse,
 )
-from app.common.utils.pdf import get_pdf_page_count
-from app.ocr.service import OCRService
-
 from app.services.cache.response import ResponseCache
-from app.services.cache.processing_lock import ProcessingLockService
+from app.services.storage.service import (
+    StorageService,
+)
+from app.workers.document_tasks import (
+    process_documents_batch_task,
+)
+
 
 class DocumentService:
 
@@ -64,9 +52,9 @@ class DocumentService:
         self.storage_service = StorageService(db)
 
         self.audit_log_service = AuditLogService(db)
-        
+
         self.response_cache = ResponseCache()
-        
+
 
     async def upload_document(
         self,
@@ -74,7 +62,7 @@ class DocumentService:
         current_user: User,
         files: list[UploadFile],
     ) -> UploadDocumentResponse:
-        
+
         if len(files) > 10:
             raise BadRequestException(
                 "Maximum 10 files can be uploaded at once."
@@ -203,7 +191,7 @@ class DocumentService:
                     )
                 )
             )
-            
+
             await self.response_cache.delete(
                 f"documents:{current_user.id}:0:20"
             )
@@ -330,7 +318,7 @@ class DocumentService:
                 },
             )
         )
-    
+
     async def delete_document(
         self,
         http_request: Request,
@@ -407,10 +395,10 @@ class DocumentService:
         document = await self.repository.get_document_by_id(document_id)
         if document is None:
             raise NotFoundException("Document not found.")
-            
+
         if document.owner_id != str(current_user.id):
             raise ForbiddenException("You do not have access to this document.")
-            
+
         if not document.version_group_id:
             return [
                 DocumentResponse.model_validate(
@@ -420,7 +408,7 @@ class DocumentService:
                     )
                 )
             ]
-            
+
         versions = await self.repository.get_versions_by_group(
             document.version_group_id
         )

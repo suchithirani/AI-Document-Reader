@@ -1,34 +1,34 @@
 import asyncio
 import json
 import logging
-from collections import defaultdict
 import re
+from collections import defaultdict
+
+from app.common.exceptions.auth import BaseAppException
 from app.common.exceptions.search import SearchException
+from app.core.config import settings
 from app.modules.document_chunks.service import DocumentChunkService
 from app.modules.document_images.service import DocumentImageService
 from app.modules.documents.repository import DocumentRepository
 from app.services.ai.service import AIService
-from app.services.ocr_cleaner.service import clean_ocr_text
 from app.services.analytics.ai_usage import AIUsageService
 from app.services.bm25_search.service import BM25SearchService
 from app.services.cache.embedding_cache import EmbeddingCache
 from app.services.citation_validator.service import CitationValidator
 from app.services.context_compressor.service import ContextCompressor
 from app.services.embedding.service import EmbeddingService
-from app.core.config import settings
 from app.services.hybrid_search.service import HybridSearchService
 from app.services.image_query.service import ImageQueryService
 from app.services.metadata_filter.service import MetadataFilterService
+from app.services.ocr_cleaner.service import clean_ocr_text
 from app.services.page_query.service import PageQueryService
 from app.services.performance_logger.service import PerformanceLogger
 from app.services.prompt_builder.service import PromptBuilder
+from app.services.query_analysis.analyzer import QueryAnalyzer
+from app.services.retrieval.service import RetrievalService
 from app.services.token_budget.service import TokenBudgetService
 from app.services.vector_search.service import VectorSearchService
 from app.services.vision.service import VisionService
-from app.services.query_analysis.analyzer import QueryAnalyzer
-from app.common.constants import QueryIntent
-from app.services.retrieval.service import RetrievalService
-from app.common.exceptions.auth import BaseAppException
 
 BATCH_EXTRACTION_PROMPT = """You are a precise data extraction AI. Extract the following fields from the provided document texts.
 
@@ -242,10 +242,7 @@ class SearchService:
 
         if explicit_pages:
 
-            page_numbers = {
-                document_id: explicit_pages
-                for document_id in document_ids
-            }
+            page_numbers = dict.fromkeys(document_ids, explicit_pages)
 
             return (
                 await self.document_image_service
@@ -416,7 +413,7 @@ Question:
                 "GLOBAL"
             ]
 
-        except Exception as exception:
+        except Exception:
 
             logger.exception(
                 "Retrieval scope planning failed.",
@@ -793,8 +790,8 @@ Question:
             # ============================================================
 
             invoice_keywords = {
-                "invoice", "bill", "billing", "gst", "tax", "subtotal", 
-                "grand total", "supplier", "buyer", "vendor", "rate", 
+                "invoice", "bill", "billing", "gst", "tax", "subtotal",
+                "grand total", "supplier", "buyer", "vendor", "rate",
                 "amount", "price", "payment", "bank details", "cgst", "sgst"
             }
             q_lower = question.lower()
@@ -1293,20 +1290,20 @@ Question:
         metadata_sources = [
             {**doc, "source_type": "metadata"} for doc in documents
         ]
-        
+
         # 2. Fetch all chunks
         chunks = await self.chunk_service.get_chunks(document_ids)
-        
+
         # Group chunks by document_id
         chunks_by_doc = defaultdict(list)
         for chunk in chunks:
             chunks_by_doc[chunk.document_id].append(chunk)
-            
+
         # 3. Batch Extraction per Document in 1 API Call using Gemini Flash (to support 50+ docs concurrently in <3s)
         from app.services.ai.providers.gemini import GeminiAIService
         gemini_extractor = GeminiAIService()
         doc_names = {doc["document_id"]: doc["document_name"] for doc in documents}
-        
+
         # Build batch text context
         batch_context = ""
         print("\n========== ISOLATION EXTRACTION CHUNKS ==========")
@@ -1319,11 +1316,11 @@ Question:
             for c in doc_chunks:
                 cleaned = clean_ocr_text(c.text)
                 batch_context += f"[PAGE_{c.page_number}_CHUNK_{c.chunk_index}]\n{cleaned}\n\n"
-            batch_context += f'</document>\n\n'
+            batch_context += '</document>\n\n'
         print("==================================================\n")
-            
+
         prompt = BATCH_EXTRACTION_PROMPT.format(context=batch_context)
-        
+
         raw_json = "[]"
         try:
             logger.info("Executing Batch Structured Extraction for %d documents in a single Gemini API call...", len(document_ids))
@@ -1331,14 +1328,15 @@ Question:
             raw_json = response.get("answer", "")
         except Exception as e:
             logger.error("Failed batch structured extraction on Gemini Flash: %s", e)
-            
-        import re, json
+
+        import json
+        import re
         # Strip markdown formatting
         cleaned_json = raw_json.strip()
         if cleaned_json.startswith("```"):
             cleaned_json = re.sub(r"^```(?:json)?", "", cleaned_json).strip()
             cleaned_json = re.sub(r"```$", "", cleaned_json).strip()
-            
+
         parsed_list = []
         try:
             parsed_list = json.loads(cleaned_json)
@@ -1350,24 +1348,24 @@ Question:
                     parsed_list = json.loads(array_match.group(0))
                 except Exception:
                     pass
-                    
+
         extracted_map = {}
         if isinstance(parsed_list, list):
             for item in parsed_list:
                 if isinstance(item, dict) and "document_id" in item:
                     extracted_map[item["document_id"]] = item
-                    
+
         # 4. Numerical Validation & Record Building
         records = []
         content_sources = []
         source_counter = 1
-        
+
         for doc_id in document_ids:
             doc_name = doc_names.get(doc_id, "Unknown Document")
             data = extracted_map.get(doc_id, {})
             doc_chunks = chunks_by_doc.get(doc_id, [])
             doc_chunks.sort(key=lambda x: (x.page_number, x.chunk_index))
-            
+
             # Mappings for citations
             doc_sources = []
             for chunk in doc_chunks[:2]: # Keep max 2 chunks to avoid citation bloating
@@ -1382,7 +1380,7 @@ Question:
                     "source_type": "content"
                 })
                 source_counter += 1
-                
+
             def clean_numeric(val):
                 if not val or val == "N/A":
                     return 0.0, "N/A"
@@ -1391,17 +1389,17 @@ Question:
                     return float(cleaned), val
                 except ValueError:
                     return 0.0, val
-                    
+
             subtotal_val, subtotal_str = clean_numeric(data.get("subtotal"))
             total_gst_val, total_gst_str = clean_numeric(data.get("total_gst"))
             grand_total_val, grand_total_str = clean_numeric(data.get("grand_total"))
-            
+
             # Validation warnings
             warnings = []
             if subtotal_val > 0 and total_gst_val > 0 and grand_total_val > 0:
                 if abs((subtotal_val + total_gst_val) - grand_total_val) > 2.0:
                     warnings.append("⚠️ Financial values inconsistent")
-                    
+
             records.append({
                 "document_name": doc_name,
                 "invoice_number": data.get("invoice_number", "N/A"),
@@ -1419,18 +1417,18 @@ Question:
                 "warnings": ", ".join(warnings) if warnings else "OK",
                 "citations": ", ".join(f"[{s}]" for s in doc_sources)
             })
-            
+
         # 5. Build Markdown Table
         headers = [
-            "Document", "Invoice Number", "Date", "Supplier", "Buyer", 
-            "Place of Supply", "GSTIN", "Subtotal (₹)", "Total GST (₹)", 
-            "Grand Total (₹)", "Main Products", "Quantity", "Bank Details", 
+            "Document", "Invoice Number", "Date", "Supplier", "Buyer",
+            "Place of Supply", "GSTIN", "Subtotal (₹)", "Total GST (₹)",
+            "Grand Total (₹)", "Main Products", "Quantity", "Bank Details",
             "Validation Warnings", "Sources"
         ]
-        
+
         md_table = "| " + " | ".join(headers) + " |\n"
         md_table += "| " + " | ".join(["---"] * len(headers)) + " |\n"
-        
+
         for r in records:
             row = [
                 r["document_name"], r["invoice_number"], r["date"], r["supplier"], r["buyer"],
@@ -1438,7 +1436,7 @@ Question:
                 r["main_products"], r["quantity"], r["bank_details"], r["warnings"], r["citations"]
             ]
             md_table += "| " + " | ".join(str(cell).replace("\n", " ").strip() for cell in row) + " |\n"
-            
+
         return md_table, metadata_sources, content_sources
 
     async def search_stream(
@@ -1486,8 +1484,8 @@ Question:
             # ============================================================
 
             invoice_keywords = {
-                "invoice", "bill", "billing", "gst", "tax", "subtotal", 
-                "grand total", "supplier", "buyer", "vendor", "rate", 
+                "invoice", "bill", "billing", "gst", "tax", "subtotal",
+                "grand total", "supplier", "buyer", "vendor", "rate",
                 "amount", "price", "payment", "bank details", "cgst", "sgst"
             }
             q_lower = question.lower()

@@ -1,6 +1,6 @@
 from app.common.constants import CollectionName
-from app.repositories.base_repository import BaseRepository
 from app.common.utils.datetime import utc_now
+from app.repositories.base_repository import BaseRepository
 
 
 class ChatSessionDocumentRepository(

@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -5,17 +7,15 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from typing import Annotated
 from fastapi.responses import FileResponse
 
 from app.common.response import paginated_response, success_response
 from app.dependencies.auth import get_current_user
+from app.dependencies.rate_limit import rate_limit
 from app.dependencies.service import get_document_service
 from app.modules.auth.model import User
-from app.modules.documents.service import DocumentService
-from app.dependencies.rate_limit import rate_limit
 from app.modules.documents.schema import ProcessDocumentsRequest
-
+from app.modules.documents.service import DocumentService
 
 document_router = APIRouter(
     prefix="/documents",
@@ -37,7 +37,7 @@ async def upload_document(
         get_document_service,
     ),
 ):
-    
+
     result = await service.upload_document(
         request,
         current_user,

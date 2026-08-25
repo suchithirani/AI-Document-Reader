@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from app.common.constants import QueryIntent, QueryScope
 
+
 class QueryAnalysis(BaseModel):
     intent: QueryIntent = QueryIntent.GENERAL
     scope: QueryScope = QueryScope.GLOBAL

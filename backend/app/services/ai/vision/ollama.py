@@ -1,4 +1,5 @@
 import base64
+
 import httpx
 
 from app.common.exceptions.ai import (
@@ -41,7 +42,7 @@ class OllamaVision(VisionProvider):
                 image_bytes = image.get("bytes")
                 if not image_bytes:
                     raise AIResponseException("Image bytes are empty.")
-                
+
                 base64_encoded = base64.b64encode(image_bytes).decode("utf-8")
                 base64_images.append(base64_encoded)
 

@@ -1,14 +1,14 @@
-import asyncio
 import logging
 from datetime import UTC, datetime
-from app.core.celery import celery_app
-from app.workers.database import get_worker_database
-from app.workers.base import run_async_task
-from app.modules.search.service import SearchService
-from app.modules.chat.service import ChatService
+
 from app.common.constants import ChatRole
-from app.services.ai.service import AIService
 from app.common.utils.datetime import utc_now
+from app.core.celery import celery_app
+from app.modules.chat.service import ChatService
+from app.modules.search.service import SearchService
+from app.services.ai.service import AIService
+from app.workers.base import run_async_task
+from app.workers.database import get_worker_database
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +54,13 @@ async def run_proactive_insights(
     document_ids: list[str],
 ):
     logger.info("Starting proactive insights analysis for user %s and documents %s", owner_id, document_ids)
-    
+
     client, db = await get_worker_database()
-    
+
     search_service = SearchService(db)
     chat_service = ChatService(db)
     ai_service = AIService()
-    
+
     # 1. Run the structured batch extraction pipeline to get the table
     try:
         md_table, content_sources, metadata_sources = await search_service._run_extraction_pipeline(
@@ -72,11 +72,11 @@ async def run_proactive_insights(
     except Exception as e:
         logger.error("Failed to run extraction pipeline for proactive insights: %s", e)
         return
-        
+
     if not md_table:
         logger.warning("No extraction table was generated, skipping proactive insights.")
         return
-        
+
     # 2. Run LLM call to get insights
     prompt = PROACTIVE_INSIGHTS_PROMPT.format(table=md_table)
     try:
@@ -85,11 +85,11 @@ async def run_proactive_insights(
     except Exception as e:
         logger.error("Failed to generate proactive insights from LLM: %s", e)
         return
-        
+
     if not insight_content:
         logger.warning("LLM returned empty insights, skipping.")
         return
-        
+
     # 3. Create a new chat session linked to these documents
     try:
         session = await chat_service.create_session(
@@ -97,7 +97,7 @@ async def run_proactive_insights(
             document_ids=document_ids
         )
         session_id = str(session.id)
-        
+
         # 4. Insert proactive greeting assistant message
         await chat_service.repository.create_message({
             "session_id": session_id,
@@ -107,18 +107,18 @@ async def run_proactive_insights(
             "created_at": datetime.now(UTC),
             "updated_at": datetime.now(UTC)
         })
-        
+
         # 5. Generate and update a smart title for the chat session
         doc_meta = await search_service._get_document_metadata(document_ids)
         doc_names = [doc["document_name"] for doc in doc_meta if doc.get("document_name")]
-        
+
         if len(doc_names) == 1:
             title = f"Proactive Analysis: {doc_names[0]}"
         elif len(doc_names) > 1:
             title = f"Proactive Analysis: {doc_names[0]} & {len(doc_names)-1} others"
         else:
             title = "Proactive Analysis"
-            
+
         await chat_service.repository.update(
             session_id,
             {
@@ -127,9 +127,9 @@ async def run_proactive_insights(
                 "updated_at": utc_now(),
             }
         )
-        
+
         logger.info("Successfully generated proactive insights in chat session %s", session_id)
-        
+
     except Exception as e:
         logger.error("Failed to complete proactive insights session setup: %s", e)
 
@@ -148,7 +148,7 @@ Return a list of 1-3 concise memory statements, each as a single sentence. If no
 
 Response (strictly a valid JSON list of strings only):"""
 
-MEMORY_CONSOLIDATION_PROMPT = """You are an AI Memory Consolidator. 
+MEMORY_CONSOLIDATION_PROMPT = """You are an AI Memory Consolidator.
 
 Here is the user's existing list of long-term memories/preferences:
 {existing_memories}
@@ -223,7 +223,8 @@ async def run_update_user_memory(
         logger.error("Failed to run memory extraction prompt: %s", e)
         return
 
-    import json, re
+    import json
+    import re
     new_obs = []
     cleaned_obs_json = raw_observations.strip()
     if cleaned_obs_json.startswith("```"):
@@ -346,11 +347,11 @@ async def run_extract_document_metadata(
     from app.common.constants import CollectionName
     chunks_col = db[CollectionName.DOCUMENT_CHUNKS.value]
     chunks = await chunks_col.find({"document_id": document_id}).sort("index", 1).limit(4).to_list(4)
-    
+
     if not chunks:
         logger.warning("No chunks found for document %s, skipping metadata extraction.", document_id)
         return
-        
+
     texts = []
     for c in chunks:
         text = c.get("content") or c.get("text") or ""
@@ -366,7 +367,8 @@ async def run_extract_document_metadata(
         logger.error("Failed to call LLM for document metadata extraction: %s", e)
         return
 
-    import json, re
+    import json
+    import re
     cleaned_json = raw_meta.strip()
     if cleaned_json.startswith("```"):
         cleaned_json = re.sub(r"^```(?:json)?", "", cleaned_json).strip()
@@ -409,7 +411,7 @@ async def run_extract_document_metadata(
             }
         )
         logger.info("Successfully extracted and saved metadata for document %s (type: %s)", document_id, doc_type)
-        
+
         # Evict Redis cache for owner to ensure UI displays metadata instantly
         doc = await docs_col.find_one({"_id": ObjectId(document_id)})
         if doc and doc.get("owner_id"):

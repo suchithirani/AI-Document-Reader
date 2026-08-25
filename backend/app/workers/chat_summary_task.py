@@ -1,9 +1,9 @@
 from app.core.celery import celery_app
-from app.workers.database import get_worker_database
 from app.modules.chat.summary_service import (
     ChatSummaryService,
 )
 from app.workers.base import run_async_task
+from app.workers.database import get_worker_database
 
 
 @celery_app.task(

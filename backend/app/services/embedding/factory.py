@@ -1,15 +1,16 @@
 from app.services.embedding.gemini import (
     GeminiEmbedding,
 )
-from app.services.embedding.openai import (
-    OpenAIEmbedding,
-)
 from app.services.embedding.local import (
     LocalEmbedding,
 )
 from app.services.embedding.ollama import (
     OllamaEmbedding,
 )
+from app.services.embedding.openai import (
+    OpenAIEmbedding,
+)
+
 
 class EmbeddingFactory:
 

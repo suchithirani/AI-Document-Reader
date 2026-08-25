@@ -1,9 +1,10 @@
-import fitz
-import re
-import numpy as np
 import logging
-from PIL import Image, ImageOps
+import re
+
+import fitz
 import pytesseract
+from PIL import Image, ImageOps
+
 from app.common.exceptions.document import (
     OCRException,
 )
@@ -23,17 +24,17 @@ class PDFOCR:
         # Header
         headers = [str(cell).replace('\n', ' ').strip() if cell else "" for cell in table_data[0]]
         markdown.append("| " + " | ".join(headers) + " |")
-        
+
         # Separator
         separator = ["---"] * len(headers)
         markdown.append("| " + " | ".join(separator) + " |")
-        
+
         # Rows
         for row in table_data[1:]:
             cells = [str(cell).replace('\n', ' ').strip() if cell else "" for cell in row]
             cells.extend([""] * (len(headers) - len(cells)))
             markdown.append("| " + " | ".join(cells[:len(headers)]) + " |")
-            
+
         return "\n".join(markdown)
 
     def extract_text(
@@ -46,7 +47,7 @@ class PDFOCR:
             document.close()
 
             import concurrent.futures
-            
+
             # Bound parallel workers to max 4 to preserve CPU and memory
             max_workers = min(num_pages, 4)
             pages = [None] * num_pages
@@ -98,7 +99,7 @@ class PDFOCR:
 
             for block in blocks:
                 block_rect = fitz.Rect(block[:4])
-                
+
                 # Check if this block is inside any extracted table
                 in_table = False
                 for bbox in table_bboxes:
@@ -109,14 +110,14 @@ class PDFOCR:
                         if block_area > 0 and (intersection.get_area() / block_area) > 0.5:
                             in_table = True
                             break
-                
+
                 if in_table:
                     continue
-                    
+
                 text = block[4].strip()
                 if not text:
                     continue
-                    
+
                 text = self._clean_text(text)
                 if text:
                     extracted_items.append({
@@ -126,7 +127,7 @@ class PDFOCR:
 
             # Sort all extracted items (tables and text blocks) vertically
             extracted_items.sort(key=lambda item: item['y'])
-            
+
             page_text = [item['text'] for item in extracted_items]
             combined_text = "\n\n".join(page_text).strip()
 

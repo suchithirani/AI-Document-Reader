@@ -1,10 +1,8 @@
+import logging
 from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
-
-import logging
 
 logger = logging.getLogger(__name__)
 

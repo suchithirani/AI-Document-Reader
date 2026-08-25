@@ -1,9 +1,9 @@
+import logging
 from collections import defaultdict
 
 from app.services.bm25_search.service import BM25SearchService
 from app.services.hybrid_search.service import HybridSearchService
 from app.services.vector_search.service import VectorSearchService
-import logging 
 
 logger = logging.getLogger(__name__)
 
